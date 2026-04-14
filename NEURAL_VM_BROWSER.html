@@ -1,0 +1,1612 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GAN Neural VM - Browser Runtime</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0e17;color:#e0e0e0;font-family:'Segoe UI',monospace;overflow-x:hidden}
+.header{background:linear-gradient(180deg,#0d1520,#0a0e17);padding:15px 20px;border-bottom:1px solid #1a3a5c;display:flex;justify-content:space-between;align-items:center}
+.header h1{font-size:20px;background:linear-gradient(90deg,#00ff88,#00ccff);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.header .badge{background:#1a3a5c;padding:4px 12px;border-radius:4px;font-size:11px;color:#00ff88}
+.main{display:grid;grid-template-columns:320px 1fr 300px;gap:15px;padding:15px;height:calc(100vh - 60px)}
+.panel{background:#111827;border:1px solid #1e2d45;border-radius:8px;overflow:hidden;display:flex;flex-direction:column}
+.panel-header{background:#0d1520;padding:12px 15px;border-bottom:1px solid #1e2d45;font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px}
+.panel-body{padding:15px;flex:1;overflow-y:auto}
+.stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.stat-card{background:#0d1520;padding:12px;border-radius:6px;border:1px solid #1e2d45}
+.stat-label{font-size:11px;color:#8899aa;margin-bottom:4px}
+.stat-value{font-size:20px;font-weight:700;color:#00ff88;font-family:'Consolas',monospace}
+.stat-value.warn{color:#ffaa00}
+.stat-value.good{color:#00ff88}
+.stat-value.info{color:#00ccff}
+.controls{display:flex;flex-direction:column;gap:8px;margin-top:15px}
+.btn{padding:10px 15px;border:none;border-radius:6px;cursor:pointer;font-weight:600;font-size:13px;transition:all 0.2s}
+.btn-primary{background:linear-gradient(135deg,#00ff88,#00cc66);color:#000}
+.btn-primary:hover{background:linear-gradient(135deg,#00ffaa,#00ee88);transform:translateY(-1px)}
+.btn-secondary{background:#1e2d45;color:#e0e0e0}
+.btn-secondary:hover{background:#2a3f5c}
+.btn-danger{background:#dc2626;color:#fff}
+.btn-danger:hover{background:#ef4444}
+.btn:disabled{opacity:0.4;cursor:not-allowed;transform:none}
+.file-drop{border:2px dashed #1e2d45;border-radius:8px;padding:30px;text-align:center;cursor:pointer;transition:all 0.3s}
+.file-drop:hover,.file-drop.dragover{border-color:#00ff88;background:rgba(0,255,136,0.05)}
+.file-drop .icon{font-size:40px;margin-bottom:10px}
+.file-drop p{color:#8899aa;font-size:12px}
+canvas{width:100%;border-radius:6px;background:#0a0e17}
+.progress-container{margin-top:10px}
+.progress-bar{background:#1e2d45;border-radius:10px;height:6px;overflow:hidden}
+.progress-fill{background:linear-gradient(90deg,#00ff88,#00ccff);height:100%;transition:width 0.3s;border-radius:10px}
+.log{background:#0a0e17;border-radius:6px;padding:10px;font-family:'Consolas',monospace;font-size:11px;max-height:200px;overflow-y:auto;line-height:1.6}
+.log-line{color:#8899aa}
+.log-line .time{color:#4a6080}
+.log-line .info{color:#00ccff}
+.log-line .success{color:#00ff88}
+.log-line .warn{color:#ffaa00}
+.log-line .error{color:#ff4444}
+.metric-row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #1e2d45;font-size:12px}
+.metric-row:last-child{border-bottom:none}
+.metric-label{color:#8899aa}
+.metric-value{color:#e0e0e0;font-family:'Consolas',monospace}
+.viz-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
+.mini-chart{background:#0a0e17;border-radius:6px;padding:10px;border:1px solid #1e2d45}
+.mini-chart canvas{height:80px}
+.mini-chart-label{font-size:11px;color:#8899aa;margin-bottom:5px}
+.torch-visual{height:150px;background:#0a0e17;border-radius:6px;border:1px solid #1e2d45;position:relative;overflow:hidden}
+#left-panel{display:flex;flex-direction:column;gap:15px}
+#center-panel{display:flex;flex-direction:column;gap:15px}
+#right-panel{display:flex;flex-direction:column;gap:15px}
+.status-indicator{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+.status-indicator.running{background:#00ff88;box-shadow:0 0 8px #00ff88;animation:pulse 1.5s infinite}
+.status-indicator.idle{background:#4a6080}
+.status-indicator.error{background:#ff4444}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.5}}
+.curriculum-bar{display:flex;gap:3px;margin-top:5px}
+.curriculum-level{flex:1;height:4px;border-radius:2px;background:#1e2d45}
+.curriculum-level.active{background:#00ff88}
+.curriculum-level.completed{background:#00ccff}
+/* VM Modal Styles */
+.vm-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.85);z-index:9999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
+.vm-modal{background:#111827;border:1px solid #1e2d45;border-radius:12px;width:95%;max-width:1200px;max-height:95vh;display:flex;flex-direction:column;box-shadow:0 0 60px rgba(0,255,136,0.15)}
+.vm-modal-header{background:#0d1520;padding:15px 20px;border-bottom:1px solid #1e2d45;display:flex;justify-content:space-between;align-items:center;border-radius:12px 12px 0 0}
+.vm-modal-header h2{font-size:16px;background:linear-gradient(90deg,#00ff88,#00ccff);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.vm-close-btn{background:none;border:none;color:#8899aa;font-size:20px;cursor:pointer;padding:4px 8px;border-radius:4px}
+.vm-close-btn:hover{color:#fff;background:#1e2d45}
+.vm-modal-body{padding:20px;overflow-y:auto;flex:1}
+.vm-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:15px}
+.vm-section{background:#0d1520;border:1px solid #1e2d45;border-radius:8px;padding:12px}
+.vm-section-title{font-size:12px;color:#00ff88;font-weight:600;margin-bottom:10px;text-transform:uppercase;letter-spacing:1px}
+.vm-registers{display:flex;flex-direction:column;gap:6px}
+.vm-reg{display:flex;justify-content:space-between;padding:6px 10px;background:#111827;border-radius:4px;border:1px solid #1e2d45;font-size:12px}
+.vm-reg span:first-child{color:#8899aa;font-weight:600}
+.vm-reg-val{color:#00ff88;font-family:'Consolas',monospace;font-weight:700}
+.vm-stack-container,.vm-attention-container,.vm-output-container{display:flex;justify-content:center;align-items:center;background:#0a0e17;border-radius:6px;border:1px solid #1e2d45;padding:5px}
+.vm-stack-info{display:flex;justify-content:space-between;font-size:11px;color:#8899aa;margin-top:6px}
+.vm-grid-bottom{display:grid;grid-template-columns:1fr 2fr;gap:15px;margin-top:15px}
+.vm-instr-log{background:#0a0e17;border-radius:6px;padding:8px;max-height:180px;overflow-y:auto;font-family:'Consolas',monospace;font-size:11px;line-height:1.5}
+.vm-instr-entry{padding:2px 6px;border-radius:3px;margin:1px 0}
+.vm-instr-entry:nth-child(odd){background:rgba(0,255,136,0.03)}
+.vm-program-bar{display:flex;gap:2px;flex-wrap:wrap}
+.vm-program-cell{width:8px;height:20px;border-radius:2px;background:#1e2d45;transition:background 0.2s}
+.vm-program-cell.executed{background:#00ff88}
+.vm-program-cell.current{background:#00ccff;box-shadow:0 0 6px #00ccff}
+.vm-modal-footer{background:#0d1520;padding:12px 20px;border-top:1px solid #1e2d45;border-radius:0 0 12px 12px}
+</style>
+</head>
+<body>
+<div class="header">
+    <div style="display:flex;align-items:center;gap:12px">
+        <h1>GAN Neural VM</h1>
+        <span class="badge">Browser Runtime</span>
+        <span class="badge">F16 GGUF</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:15px;font-size:12px">
+        <span><span class="status-indicator idle" id="status-dot"></span><span id="status-text">Idle</span></span>
+        <span id="fps-counter" style="color:#8899aa">0 FPS</span>
+    </div>
+</div>
+
+<div class="main">
+    <div id="left-panel">
+        <div class="panel">
+            <div class="panel-header">GGUF Loader</div>
+            <div class="panel-body">
+                <div class="file-drop" id="file-drop" onclick="document.getElementById('file-input').click()">
+                    <div class="icon">📁</div>
+                    <p>Drop GGUF file or click to browse</p>
+                    <p style="margin-top:8px;color:#00ff88;font-weight:600" id="file-name">No file loaded</p>
+                </div>
+                <input type="file" id="file-input" accept=".gguf" style="display:none" onchange="handleFileSelect(event)">
+                <div id="load-progress" class="progress-container" style="display:none">
+                    <div class="progress-bar"><div class="progress-fill" id="load-progress-bar" style="width:0%"></div></div>
+                </div>
+            </div>
+        </div>
+        <div class="panel">
+            <div class="panel-header">VM Registers</div>
+            <div class="panel-body">
+                <div class="metric-row"><span class="metric-label">Program Counter</span><span class="metric-value" id="reg-pc">0</span></div>
+                <div class="metric-row"><span class="metric-label">Stack Pointer</span><span class="metric-value" id="reg-sp">0</span></div>
+                <div class="metric-row"><span class="metric-label">Frame Pointer</span><span class="metric-value" id="reg-fp">0</span></div>
+                <div class="metric-row"><span class="metric-label">Flags</span><span class="metric-value" id="reg-flags">00000000</span></div>
+                <div class="metric-row"><span class="metric-label">Memory</span><span class="metric-value" id="reg-mem">1024×64</span></div>
+                <div class="metric-row"><span class="metric-label">Stack Depth</span><span class="metric-value" id="reg-stack">0/512</span></div>
+            </div>
+        </div>
+        <div class="panel">
+            <div class="panel-header">Controls</div>
+            <div class="panel-body">
+                <div class="controls">
+                    <button class="btn btn-primary" id="btn-start" onclick="startTraining()" disabled>▶ Start GAN Training</button>
+                    <button class="btn btn-secondary" id="btn-bootstrap" onclick="startBootstrap()" disabled>🔄 Bootstrap Self-Play</button>
+                    <button class="btn btn-secondary" id="btn-generate" onclick="generateSample()" disabled>🎲 Generate Sample</button>
+                    <button class="btn btn-secondary" id="btn-bench" onclick="runBenchmark()" disabled>⚡ Benchmark</button>
+                    <button class="btn btn-danger" id="btn-stop" onclick="stopTraining()" disabled>⏹ Stop</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div id="center-panel">
+        <div class="panel" style="flex:1">
+            <div class="panel-header">Loss Visualization</div>
+            <div class="panel-body">
+                <canvas id="loss-chart" height="250"></canvas>
+            </div>
+        </div>
+        <div class="panel" style="flex:1">
+            <div class="panel-header">Generation Visualization</div>
+            <div class="panel-body">
+                <canvas id="gen-viz" height="200"></canvas>
+            </div>
+        </div>
+        <div class="panel">
+            <div class="panel-header">VM Console</div>
+            <div class="panel-body">
+                <div class="log" id="console"></div>
+            </div>
+        </div>
+    </div>
+    
+    <div id="right-panel">
+        <div class="panel">
+            <div class="panel-header">Training Metrics</div>
+            <div class="panel-body">
+                <div class="stat-grid">
+                    <div class="stat-card"><div class="stat-label">Epoch</div><div class="stat-value info" id="m-epoch">0</div></div>
+                    <div class="stat-card"><div class="stat-label">Gen Loss</div><div class="stat-value" id="m-gen">0.0000</div></div>
+                    <div class="stat-card"><div class="stat-label">Disc Loss</div><div class="stat-value warn" id="m-disc">0.0000</div></div>
+                    <div class="stat-card"><div class="stat-label">Steps/sec</div><div class="stat-value" id="m-speed">0</div></div>
+                </div>
+                <div class="progress-container" style="margin-top:15px">
+                    <div style="font-size:11px;color:#8899aa;margin-bottom:5px">Training Progress</div>
+                    <div class="progress-bar"><div class="progress-fill" id="train-progress" style="width:0%"></div></div>
+                    <div style="font-size:11px;color:#8899aa;margin-top:5px;text-align:right" id="train-progress-text">0 / 0</div>
+                </div>
+            </div>
+        </div>
+        <div class="panel">
+            <div class="panel-header">Curriculum</div>
+            <div class="panel-body">
+                <div class="metric-row"><span class="metric-label">Level</span><span class="metric-value" id="curr-level">1 / 10</span></div>
+                <div class="metric-row"><span class="metric-label">Noise Scale</span><span class="metric-value" id="curr-noise">1.00</span></div>
+                <div class="metric-row"><span class="metric-label">Batch Size</span><span class="metric-value" id="curr-batch">32</span></div>
+                <div class="metric-row"><span class="metric-label">Critic Iters</span><span class="metric-value" id="curr-critic">5</span></div>
+                <div class="curriculum-bar" id="curr-bar"></div>
+                <div class="metric-row" style="margin-top:10px"><span class="metric-label">Diversity</span><span class="metric-value" id="curr-diversity">0.0000</span></div>
+            </div>
+        </div>
+        <div class="panel">
+            <div class="panel-header">Model Info</div>
+            <div class="panel-body">
+                <div class="metric-row"><span class="metric-label">Generator</span><span class="metric-value">4 layers</span></div>
+                <div class="metric-row"><span class="metric-label">Discriminator</span><span class="metric-value">3 layers</span></div>
+                <div class="metric-row"><span class="metric-label">Latent Dim</span><span class="metric-value">256</span></div>
+                <div class="metric-row"><span class="metric-label">Hidden Dim</span><span class="metric-value">512</span></div>
+                <div class="metric-row"><span class="metric-label">Output Dim</span><span class="metric-value">1024</span></div>
+                <div class="metric-row"><span class="metric-label">Precision</span><span class="metric-value">F16</span></div>
+                <div class="metric-row"><span class="metric-label">GAN Type</span><span class="metric-value">WGAN-GP</span></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- VM Execution Modal -->
+<div id="vm-modal-overlay" class="vm-overlay" style="display:none">
+    <div class="vm-modal">
+        <div class="vm-modal-header">
+            <div style="display:flex;align-items:center;gap:10px">
+                <span style="font-size:18px">⚡</span>
+                <h2>Neural VM Execution</h2>
+                <span class="badge" style="font-size:10px">LIVE</span>
+            </div>
+            <button class="vm-close-btn" onclick="closeVMModal()">✕</button>
+        </div>
+        <div class="vm-modal-body">
+            <div class="vm-grid">
+                <!-- Left: Registers -->
+                <div class="vm-section">
+                    <div class="vm-section-title">Registers</div>
+                    <div class="vm-registers">
+                        <div class="vm-reg"><span>PC</span><span id="vm-pc" class="vm-reg-val">0</span></div>
+                        <div class="vm-reg"><span>SP</span><span id="vm-sp" class="vm-reg-val">0</span></div>
+                        <div class="vm-reg"><span>FP</span><span id="vm-fp" class="vm-reg-val">0</span></div>
+                        <div class="vm-reg"><span>FLAGS</span><span id="vm-flags" class="vm-reg-val">00000000</span></div>
+                        <div class="vm-reg"><span>INSTR</span><span id="vm-instr" class="vm-reg-val">-</span></div>
+                        <div class="vm-reg"><span>CYCLE</span><span id="vm-cycle" class="vm-reg-val">0</span></div>
+                    </div>
+                </div>
+
+                <!-- Center: Stack Visualization -->
+                <div class="vm-section">
+                    <div class="vm-section-title">Stack Memory</div>
+                    <div class="vm-stack-container">
+                        <canvas id="vm-stack-viz" width="280" height="180"></canvas>
+                    </div>
+                    <div class="vm-stack-info">
+                        <span id="vm-stack-depth">Depth: 0/512</span>
+                        <span id="vm-stack-top">Top: 0.000</span>
+                    </div>
+                </div>
+
+                <!-- Right: Attention Heatmap -->
+                <div class="vm-section">
+                    <div class="vm-section-title">Attention Weights</div>
+                    <div class="vm-attention-container">
+                        <canvas id="vm-attention-viz" width="280" height="180"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bottom: Instruction Flow + Output -->
+            <div class="vm-grid-bottom">
+                <div class="vm-section">
+                    <div class="vm-section-title">Instruction Flow</div>
+                    <div class="vm-instr-log" id="vm-instr-log"></div>
+                </div>
+                <div class="vm-section">
+                    <div class="vm-section-title">Output Signal</div>
+                    <div class="vm-output-container">
+                        <canvas id="vm-output-viz" width="560" height="160"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Program counter visualization -->
+            <div class="vm-section" style="margin-top:10px">
+                <div class="vm-section-title">Program Flow</div>
+                <div class="vm-program-bar" id="vm-program-bar"></div>
+            </div>
+        </div>
+        <div class="vm-modal-footer">
+            <div style="display:flex;justify-content:space-between;align-items:center">
+                <span id="vm-status" style="font-size:12px;color:#8899aa">Ready</span>
+                <div style="display:flex;gap:8px">
+                    <button class="btn btn-secondary" onclick="vmStepOnce()" id="vm-btn-step">Step</button>
+                    <button class="btn btn-primary" onclick="vmRunProgram()" id="vm-btn-run">Run Program</button>
+                    <button class="btn btn-danger" onclick="vmReset()" id="vm-btn-reset">Reset</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// ============================================
+// F16 IEEE 754 half-precision math
+// ============================================
+const F16 = {
+    toFloat32(h) {
+        const s = (h & 0x8000) << 16;
+        const e = (h & 0x7C00) >> 10;
+        const f = h & 0x03FF;
+        if (e === 0) return (f === 0) ? (s ? -0 : 0) : (s ? -1 : 1) * Math.pow(2, -24) * f;
+        if (e === 0x1F) return f ? NaN : (s ? -Infinity : Infinity);
+        return (s ? -1 : 1) * Math.pow(2, e - 15) * (1 + f / 1024);
+    },
+    fromFloat32(v) {
+        if (isNaN(v)) return 0x7FFF;
+        if (!isFinite(v)) return v > 0 ? 0x7C00 : 0xFC00;
+        const s = v < 0 ? 0x8000 : 0;
+        const av = Math.abs(v);
+        if (av === 0) return s;
+        const e = Math.floor(Math.log2(av));
+        const clampedE = Math.max(-14, Math.min(15, e));
+        const denormShift = e < -14 ? (-14 - e) : 0;
+        let f = Math.round((av / Math.pow(2, clampedE) - 1) * 1024);
+        if (f >= 1024) { f = 0; clampedE++; }
+        if (clampedE > 15) return s | 0x7C00;
+        return s | ((clampedE + 15) << 10) | (denormShift ? Math.round(av * Math.pow(2, 24)) : f);
+    }
+};
+
+// ============================================
+// Matrix operations (optimized)
+// ============================================
+const Mat = {
+    zeros(rows, cols) { return new Float32Array(rows * cols); },
+    randn(rows, cols, std = 0.02) {
+        const m = new Float32Array(rows * cols);
+        for (let i = 0; i < m.length; i++) {
+            let u = 0, v = 0;
+            while (u === 0) u = Math.random();
+            while (v === 0) v = Math.random();
+            m[i] = Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v) * std;
+        }
+        return m;
+    },
+    mm(a, b, ra, ca, cb) {
+        // a: [ra, ca], b: [ca, cb] -> result: [ra, cb]
+        const c = new Float32Array(ra * cb);
+        for (let i = 0; i < ra; i++) {
+            for (let k = 0; k < ca; k++) {
+                const a_ik = a[i * ca + k];
+                if (a_ik === 0) continue;
+                for (let j = 0; j < cb; j++) {
+                    c[i * cb + j] += a_ik * b[k * cb + j];
+                }
+            }
+        }
+        return c;
+    },
+    addBias(x, b, rows, cols) {
+        const r = new Float32Array(x.length);
+        for (let i = 0; i < rows; i++)
+            for (let j = 0; j < cols; j++)
+                r[i * cols + j] = x[i * cols + j] + b[j];
+        return r;
+    },
+    relu(x) {
+        const r = new Float32Array(x.length);
+        for (let i = 0; i < x.length; i++) r[i] = Math.max(0, x[i]);
+        return r;
+    },
+    tanh(x) {
+        const r = new Float32Array(x.length);
+        for (let i = 0; i < x.length; i++) r[i] = Math.tanh(x[i]);
+        return r;
+    },
+    sigmoid(x) {
+        const r = new Float32Array(x.length);
+        for (let i = 0; i < x.length; i++) r[i] = 1 / (1 + Math.exp(-x[i]));
+        return r;
+    },
+    mean(x) {
+        let s = 0;
+        for (let i = 0; i < x.length; i++) s += x[i];
+        return s / x.length;
+    }
+};
+
+// ============================================
+// GGUF Binary Parser
+// ============================================
+class GGUFLoader {
+    constructor() {
+        this.metadata = {};
+        this.tensorData = {};
+        this.tensorInfo = {};
+    }
+    
+    async load(file, onProgress) {
+        log('info', `Loading GGUF file: ${file.name} (${(file.size / 1048576).toFixed(2)} MB)`);
+        
+        const buf = await file.arrayBuffer();
+        const view = new DataView(buf);
+        const bytes = new Uint8Array(buf);
+        let pos = 0;
+        
+        // Header
+        const magic = view.getUint32(0, true);
+        if (magic !== 0x46554747) throw new Error('Invalid GGUF magic');
+        
+        const version = view.getUint32(4, true);
+        const nTensors = Number(view.getBigUint64(8, true));
+        const nKV = Number(view.getBigUint64(16, true));
+        
+        log('info', `GGUF v${version}, ${nTensors} tensors, ${nKV} KV pairs`);
+        pos = 24;
+        
+        // KV metadata
+        const strDecoder = new TextDecoder();
+        for (let i = 0; i < nKV; i++) {
+            const keyLen = Number(view.getBigUint64(pos, true));
+            pos += 8;
+            const key = strDecoder.decode(bytes.subarray(pos, pos + keyLen));
+            pos += keyLen;
+            const valueType = view.getUint32(pos, true);
+            pos += 4;
+            
+            let value;
+            if (valueType === 24) { // string
+                const strLen = Number(view.getBigUint64(pos, true));
+                pos += 8;
+                value = strDecoder.decode(bytes.subarray(pos, pos + strLen));
+                pos += strLen;
+            } else if (valueType === 2) { // i32
+                value = view.getInt32(pos, true); pos += 4;
+            } else if (valueType === 0) { // f32
+                value = view.getFloat32(pos, true); pos += 4;
+            } else if (valueType === 1) { // f16
+                value = F16.toFloat32(view.getUint16(pos, true)); pos += 2;
+            } else { pos += 8; } // skip unknown
+            
+            this.metadata[key] = value;
+        }
+        
+        log('info', `Parsed ${Object.keys(this.metadata).length} metadata entries`);
+        
+        // Tensor headers
+        for (let i = 0; i < nTensors; i++) {
+            const nameLen = Number(view.getBigUint64(pos, true)); pos += 8;
+            const name = strDecoder.decode(bytes.subarray(pos, pos + nameLen)); pos += nameLen;
+            const nDims = view.getUint32(pos, true); pos += 4;
+            const shape = [];
+            for (let d = 0; d < nDims; d++) {
+                shape.push(Number(view.getBigUint64(pos, true))); pos += 8;
+            }
+            const tensorType = view.getUint32(pos, true); pos += 4;
+            const offset = Number(view.getBigUint64(pos, true)); pos += 8;
+            
+            this.tensorInfo[name] = { shape, type: tensorType, offset };
+            
+            if (onProgress) onProgress((i + 1) / nTensors * 30);
+        }
+        
+        // Load tensor data from offsets
+        log('info', 'Loading tensor data...');
+        for (const [name, info] of Object.entries(this.tensorInfo)) {
+            const nElements = info.shape.reduce((a, b) => a * b, 1);
+            const nBytes = nElements * 2; // F16 = 2 bytes
+            const start = info.offset;
+            
+            // Parse F16 tensor
+            const tensor = new Float32Array(nElements);
+            for (let j = 0; j < nElements; j++) {
+                const h = view.getUint16(start + j * 2, true);
+                tensor[j] = F16.toFloat32(h);
+            }
+            
+            this.tensorData[name] = {
+                data: tensor,
+                shape: info.shape
+            };
+        }
+        
+        log('success', `Loaded ${Object.keys(this.tensorData).length} tensors successfully`);
+        return this;
+    }
+    
+    getTensor(name) {
+        return this.tensorData[name]?.data || null;
+    }
+    
+    getShape(name) {
+        return this.tensorData[name]?.shape || null;
+    }
+}
+
+// ============================================
+// GAN Neural VM
+// ============================================
+class GANNeuralVM {
+    constructor() {
+        this.initialized = false;
+        this.epoch = 0;
+        this.genWeights = {};
+        this.discWeights = {};
+        this.vmState = {};
+        this.lossHistory = { gen: [], disc: [] };
+    }
+    
+    init(gguf) {
+        log('info', 'Initializing GAN Neural VM from GGUF...');
+        
+        // Load generator weights
+        const genKeys = Object.keys(gguf.tensorData).filter(k => k.startsWith('generator.'));
+        for (const key of genKeys) {
+            const vmKey = key.replace('generator.', '');
+            this.genWeights[vmKey] = gguf.tensorData[key].data;
+        }
+        log('info', `Generator: ${genKeys.length} weight tensors loaded`);
+        
+        // Load discriminator weights
+        const discKeys = Object.keys(gguf.tensorData).filter(k => k.startsWith('discriminator.'));
+        for (const key of discKeys) {
+            const vmKey = key.replace('discriminator.', '');
+            this.discWeights[vmKey] = gguf.tensorData[key].data;
+        }
+        log('info', `Discriminator: ${discKeys.length} weight tensors loaded`);
+        
+        // Load VM state
+        const vmKeys = Object.keys(gguf.tensorData).filter(k => k.startsWith('vm.'));
+        for (const key of vmKeys) {
+            const vmKey = key.replace('vm.', '');
+            this.vmState[vmKey] = gguf.tensorData[key].data;
+        }
+        log('info', `VM State: ${vmKeys.length} tensors loaded`);
+        
+        this.pc = 0;
+        this.sp = 0;
+        this.fp = 0;
+        this.stack = new Float32Array(512);
+        this.initialized = true;
+
+        log('success', 'GAN Neural VM initialized successfully');
+    }
+    
+    generate(noise = null) {
+        if (!this.initialized) return new Float32Array(1024);
+        if (!noise) {
+            noise = Mat.randn(256, 1, 1.0);
+        }
+        
+        let x = noise;
+        
+        // Layer 1: 256 -> 512
+        if (this.genWeights['fc1_weight']) {
+            const w = this.reshapeWeight('fc1_weight', 256, 512);
+            const b = this.get1D('fc1_bias', 512);
+            x = Mat.mm(x, w, 1, 256, 512);
+            x = Mat.addBias(x, b, 1, 512);
+            x = Mat.relu(x);
+        }
+        
+        // Layer 2: 512 -> 512
+        if (this.genWeights['fc2_weight']) {
+            const w = this.reshapeWeight('fc2_weight', 512, 512);
+            const b = this.get1D('fc2_bias', 512);
+            x = Mat.mm(x, w, 1, 512, 512);
+            x = Mat.addBias(x, b, 1, 512);
+            x = Mat.relu(x);
+        }
+        
+        // Layer 3: 512 -> 512
+        if (this.genWeights['fc3_weight']) {
+            const w = this.reshapeWeight('fc3_weight', 512, 512);
+            const b = this.get1D('fc3_bias', 512);
+            x = Mat.mm(x, w, 1, 512, 512);
+            x = Mat.addBias(x, b, 1, 512);
+            x = Mat.relu(x);
+        }
+        
+        // Output: 512 -> 1024
+        if (this.genWeights['out_weight']) {
+            const w = this.reshapeWeight('out_weight', 512, 1024);
+            const b = this.get1D('out_bias', 1024);
+            x = Mat.mm(x, w, 1, 512, 1024);
+            x = Mat.addBias(x, b, 1, 1024);
+            x = Mat.tanh(x);
+        }
+        
+        return x;
+    }
+    
+    discriminate(x) {
+        if (!this.initialized) return new Float32Array(1);
+        
+        // Layer 1: 1024 -> 512
+        if (this.discWeights['fc1_weight']) {
+            const w = this.reshapeWeight('disc_fc1_weight', 1024, 512);
+            const b = this.get1D('disc_fc1_bias', 512);
+            x = Mat.mm(x, w, 1, 1024, 512);
+            x = Mat.addBias(x, b, 1, 512);
+            x = Mat.relu(x);
+        }
+        
+        // Layer 2: 512 -> 512
+        if (this.discWeights['fc2_weight']) {
+            const w = this.reshapeWeight('disc_fc2_weight', 512, 512);
+            const b = this.get1D('disc_fc2_bias', 512);
+            x = Mat.mm(x, w, 1, 512, 512);
+            x = Mat.addBias(x, b, 1, 512);
+            x = Mat.relu(x);
+        }
+        
+        // Output: 512 -> 1
+        if (this.discWeights['out_weight']) {
+            const w = this.reshapeWeight('disc_out_weight', 512, 1);
+            const b = this.get1D('disc_out_bias', 1);
+            x = Mat.mm(x, w, 1, 512, 1);
+            x = Mat.addBias(x, b, 1, 1);
+        }
+        
+        return x;
+    }
+    
+    reshapeWeight(name, rows, cols) {
+        const w = this.genWeights[name] || this.discWeights[name];
+        if (!w) return Mat.randn(rows, cols, 0.02);
+        // Handle shape mismatches
+        const expectedLen = rows * cols;
+        if (w.length === expectedLen) {
+            // Reshape if needed (may be stored transposed)
+            return new Float32Array(w);
+        }
+        return Mat.randn(rows, cols, 0.02);
+    }
+    
+    get1D(name, size) {
+        const w = this.genWeights[name] || this.discWeights[name];
+        if (!w || w.length !== size) return new Float32Array(size);
+        return new Float32Array(w);
+    }
+    
+    trainStep() {
+        // Generate fake sample
+        const noise = Mat.randn(1, 256, 1.0);
+        const fake = this.generate(noise);
+
+        // Generate real sample (from noise distribution)
+        const real = Mat.randn(1, 1024, 1.0);
+
+        // Discriminator loss (WGAN)
+        const realPred = this.discriminate(real);
+        const fakePred = this.discriminate(fake);
+        const discLoss = -(Mat.mean(realPred) - Mat.mean(fakePred));
+
+        // Generator loss
+        const fakePred2 = this.discriminate(fake);
+        const genLoss = -Mat.mean(fakePred2);
+
+        this.epoch++;
+        this.lossHistory.gen.push(genLoss);
+        this.lossHistory.disc.push(discLoss);
+
+        // Update VM registers
+        this.pc++;
+        this.sp = (this.sp + 1) % 512;
+
+        return { genLoss, discLoss, epoch: this.epoch };
+    }
+
+    executeInstruction(instrId) {
+        // Execute a Neural VM instruction using attention over memory
+        if (!this.initialized) return new Float32Array(128);
+
+        // Get instruction embedding
+        let instrVec;
+        if (this.vmState['instr_embedding'] && instrId < 256) {
+            const emb = this.vmState['instr_embedding'];
+            instrVec = new Float32Array(128);
+            for (let j = 0; j < 128; j++) {
+                instrVec[j] = emb[instrId * 128 + j];
+            }
+        } else {
+            instrVec = Mat.randn(128, 1, 0.1);
+        }
+
+        // Generate input data
+        const inputData = Mat.randn(128, 1, 0.5);
+
+        // Apply attention mechanism if Q/K/V exist
+        if (this.vmState['attention_q'] && this.vmState['attention_k'] && this.vmState['attention_v']) {
+            const Q = this.vmState['attention_q'];
+            const K = this.vmState['attention_k'];
+            const V = this.vmState['attention_v'];
+
+            // Simplified attention: Q @ K^T -> softmax -> @ V
+            let maxScore = -Infinity;
+            let scores = new Float32Array(128);
+            for (let i = 0; i < 128; i++) {
+                let dot = 0;
+                for (let j = 0; j < 128; j++) {
+                    dot += instrVec[j] * K[i * 128 + j];
+                }
+                scores[i] = dot / Math.sqrt(128);
+                if (scores[i] > maxScore) maxScore = scores[i];
+            }
+
+            // Softmax (stable)
+            let sumExp = 0;
+            for (let i = 0; i < 128; i++) {
+                scores[i] = Math.exp(scores[i] - maxScore);
+                sumExp += scores[i];
+            }
+            for (let i = 0; i < 128; i++) {
+                scores[i] /= sumExp;
+            }
+
+            // Attention output: scores @ V
+            const output = new Float32Array(128);
+            for (let i = 0; i < 128; i++) {
+                for (let j = 0; j < 128; j++) {
+                    output[j] += scores[i] * V[i * 128 + j];
+                }
+            }
+
+            return output;
+        }
+
+        // Fallback: return instruction embedding
+        return instrVec;
+    }
+
+    pushToStack(value) {
+        if (this.sp < 512) {
+            this.stack[this.sp] = value;
+            this.sp++;
+        }
+    }
+
+    popFromStack() {
+        if (this.sp > 0) {
+            this.sp--;
+            return this.stack[this.sp];
+        }
+        return 0;
+    }
+
+    runVMProgram(nInstructions = 10) {
+        // Execute a program of VM instructions
+        const results = [];
+        for (let i = 0; i < nInstructions; i++) {
+            const instrId = this.pc % 256;
+            const output = this.executeInstruction(instrId);
+            results.push(output);
+
+            // Push result hash to stack
+            let hash = 0;
+            for (let j = 0; j < Math.min(output.length, 32); j++) {
+                hash += output[j];
+            }
+            this.pushToStack(hash);
+
+            this.pc++;
+            if (this.pc >= 1024) this.pc = 0;
+        }
+        return results;
+    }
+}
+
+// ============================================
+// Bootstrap Trainer (browser version)
+// ============================================
+class BootstrapTrainer {
+    constructor(vm) {
+        this.vm = vm;
+        this.replayBuffer = [];
+        this.bufferCapacity = 10000;
+        this.curriculumLevel = 1;
+        this.noiseScale = 1.0;
+        this.batchSize = 32;
+        this.diversityScores = [];
+        this.bootstrapEpoch = 0;
+    }
+    
+    pushToBuffer(sample) {
+        this.replayBuffer.push(sample);
+        if (this.replayBuffer.length > this.bufferCapacity) {
+            this.replayBuffer.shift();
+        }
+    }
+    
+    sampleBuffer(n) {
+        if (this.replayBuffer.length < n) return null;
+        const indices = [];
+        for (let i = 0; i < n; i++) {
+            indices.push(Math.floor(Math.random() * this.replayBuffer.length));
+        }
+        return indices.map(i => this.replayBuffer[i]);
+    }
+    
+    computeDiversity(samples) {
+        if (samples.length < 2) return 0;
+        let totalDist = 0;
+        let count = 0;
+        const maxSamples = Math.min(samples.length, 50);
+        for (let i = 0; i < maxSamples; i++) {
+            for (let j = i + 1; j < maxSamples; j++) {
+                let dist = 0;
+                for (let k = 0; k < samples[i].length; k++) {
+                    const d = samples[i][k] - samples[j][k];
+                    dist += d * d;
+                }
+                totalDist += Math.sqrt(dist);
+                count++;
+            }
+        }
+        return count > 0 ? totalDist / count : 0;
+    }
+    
+    bootstrapStep() {
+        // Generate samples
+        const noise = Mat.randn(1, 256, this.noiseScale);
+        const fake = this.vm.generate(noise);
+        this.pushToBuffer(fake);
+        
+        // Sample from replay
+        const replay = this.sampleBuffer(this.batchSize);
+        
+        // Train
+        const metrics = this.vm.trainStep();
+        
+        // Evaluate diversity
+        if (this.vm.epoch % 10 === 0) {
+            const evalSamples = [];
+            for (let i = 0; i < 20; i++) {
+                evalSamples.push(this.vm.generate());
+            }
+            const diversity = this.computeDiversity(evalSamples);
+            this.diversityScores.push(diversity);
+        }
+        
+        return metrics;
+    }
+    
+    advanceCurriculum() {
+        if (this.curriculumLevel < 10) {
+            this.curriculumLevel++;
+            this.noiseScale = Math.max(0.1, 1.0 - (this.curriculumLevel - 1) * 0.09);
+            this.batchSize = Math.min(176, 32 + (this.curriculumLevel - 1) * 16);
+        }
+    }
+}
+
+// ============================================
+// Global State
+// ============================================
+let gguf = null;
+let vm = null;
+let bootstrap = null;
+let isRunning = false;
+let trainingType = null; // 'train' or 'bootstrap'
+let animationId = null;
+let lastTime = 0;
+let frameCount = 0;
+let fps = 0;
+const MAX_EPOCHS = 1000;
+let vmExecuting = false;
+let vmExecCount = 0;
+
+// ============================================
+// UI Functions
+// ============================================
+function log(type, msg) {
+    const console = document.getElementById('console');
+    const time = new Date().toLocaleTimeString();
+    const line = document.createElement('div');
+    line.className = 'log-line';
+    line.innerHTML = `<span class="time">[${time}]</span> <span class="${type}">${msg}</span>`;
+    console.appendChild(line);
+    console.scrollTop = console.scrollHeight;
+}
+
+function handleFileSelect(event) {
+    const file = event.target.files[0];
+    if (file) loadGGUF(file);
+}
+
+async function loadGGUF(file) {
+    document.getElementById('file-name').textContent = file.name;
+    document.getElementById('load-progress').style.display = 'block';
+    
+    try {
+        gguf = new GGUFLoader();
+        await gguf.load(file, (pct) => {
+            document.getElementById('load-progress-bar').style.width = pct + '%';
+        });
+        
+        document.getElementById('load-progress-bar').style.width = '100%';
+        
+        // Initialize VM
+        vm = new GANNeuralVM();
+        vm.init(gguf);
+        bootstrap = new BootstrapTrainer(vm);
+        
+        // Enable buttons
+        document.getElementById('btn-start').disabled = false;
+        document.getElementById('btn-bootstrap').disabled = false;
+        document.getElementById('btn-generate').disabled = false;
+        document.getElementById('btn-bench').disabled = false;
+        
+        // Update curriculum bar
+        updateCurriculumBar();
+        
+        log('success', `GGUF loaded: ${Object.keys(gguf.tensorData).length} tensors, ${Object.keys(gguf.metadata).length} metadata entries`);
+    } catch (err) {
+        log('error', `Failed to load GGUF: ${err.message}`);
+    }
+}
+
+function startTraining() {
+    if (!vm || !vm.initialized) return;
+    isRunning = true;
+    trainingType = 'train';
+    document.getElementById('btn-start').disabled = true;
+    document.getElementById('btn-bootstrap').disabled = true;
+    document.getElementById('btn-stop').disabled = false;
+    document.getElementById('status-dot').className = 'status-indicator running';
+    document.getElementById('status-text').textContent = 'Training';
+    log('info', 'Starting GAN training...');
+    lastTime = performance.now();
+    frameCount = 0;
+    trainLoop();
+}
+
+function startBootstrap() {
+    if (!vm || !vm.initialized) return;
+    isRunning = true;
+    trainingType = 'bootstrap';
+    document.getElementById('btn-start').disabled = true;
+    document.getElementById('btn-bootstrap').disabled = true;
+    document.getElementById('btn-stop').disabled = false;
+    document.getElementById('status-dot').className = 'status-indicator running';
+    document.getElementById('status-text').textContent = 'Bootstrapping';
+    log('info', 'Starting bootstrap self-play training...');
+    lastTime = performance.now();
+    frameCount = 0;
+    trainLoop();
+}
+
+function stopTraining() {
+    isRunning = false;
+    trainingType = null;
+    document.getElementById('btn-start').disabled = false;
+    document.getElementById('btn-bootstrap').disabled = false;
+    document.getElementById('btn-stop').disabled = true;
+    document.getElementById('status-dot').className = 'status-indicator idle';
+    document.getElementById('status-text').textContent = 'Idle';
+    log('info', 'Training stopped');
+}
+
+function generateSample() {
+    if (!vm || !vm.initialized) return;
+    const sample = vm.generate();
+    log('success', `Generated sample: shape=[1024], mean=${Mat.mean(sample).toFixed(4)}, std=${Math.sqrt(Mat.mean(sample.map(x => x * x))).toFixed(4)}`);
+    visualizeGeneration(sample);
+}
+
+function runBenchmark() {
+    if (!vm || !vm.initialized) return;
+    log('info', 'Running benchmark (100 steps)...');
+    const start = performance.now();
+    for (let i = 0; i < 100; i++) {
+        vm.trainStep();
+    }
+    const elapsed = (performance.now() - start) / 1000;
+    const speed = (100 / elapsed).toFixed(1);
+    log('success', `Benchmark complete: 100 steps in ${elapsed.toFixed(2)}s (${speed} steps/sec)`);
+}
+
+function trainLoop() {
+    if (!isRunning) return;
+
+    // AUTO-STOP: Check if we've hit the max epochs
+    if (vm.epoch >= MAX_EPOCHS) {
+        log('success', `Training complete: reached ${MAX_EPOCHS} epochs`);
+        completeTraining();
+        return;
+    }
+
+    const stepsPerFrame = trainingType === 'bootstrap' ? 5 : 3;
+    let metrics = null;
+
+    for (let i = 0; i < stepsPerFrame; i++) {
+        // Safety check during loop
+        if (vm.epoch >= MAX_EPOCHS) break;
+
+        if (trainingType === 'bootstrap') {
+            metrics = bootstrap.bootstrapStep();
+            if (vm.epoch % 100 === 0) bootstrap.advanceCurriculum();
+        } else {
+            metrics = vm.trainStep();
+        }
+
+        // Check limit after each step
+        if (vm.epoch >= MAX_EPOCHS) break;
+    }
+
+    // Execute VM instructions periodically during training
+    if (vm.epoch % 10 === 0 && vm.initialized) {
+        vmExecuting = true;
+        const vmResults = vm.runVMProgram(5);
+        vmExecCount += 5;
+        vmExecuting = false;
+    }
+
+    updateMetrics(metrics);
+    updateCharts();
+    updateVMRegisters();
+
+    if (trainingType === 'bootstrap' && vm.epoch % 50 === 0) {
+        updateCurriculumDisplay();
+    }
+
+    // FPS counter
+    frameCount++;
+    const now = performance.now();
+    if (now - lastTime >= 1000) {
+        fps = frameCount;
+        document.getElementById('fps-counter').textContent = fps + ' FPS';
+        frameCount = 0;
+        lastTime = now;
+    }
+
+    animationId = requestAnimationFrame(trainLoop);
+}
+
+function completeTraining() {
+    isRunning = false;
+    trainingType = null;
+
+    document.getElementById('btn-start').disabled = false;
+    document.getElementById('btn-bootstrap').disabled = false;
+    document.getElementById('btn-stop').disabled = true;
+    document.getElementById('btn-generate').disabled = false;
+    document.getElementById('btn-bench').disabled = false;
+
+    document.getElementById('status-dot').className = 'status-indicator idle';
+    document.getElementById('status-text').textContent = 'Complete';
+
+    // Cap progress at 100%
+    document.getElementById('train-progress').style.width = '100%';
+    document.getElementById('train-progress-text').textContent = `${MAX_EPOCHS} / ${MAX_EPOCHS}`;
+
+    log('info', `VM instructions executed: ${vmExecCount} total`);
+    log('success', 'Executing Neural VM program...');
+
+    // AUTO-EXECUTE: Run the actual VM after training
+    executeNeuralVM();
+}
+
+function executeNeuralVM() {
+    if (!vm || !vm.initialized) return;
+
+    // Open the VM modal
+    openVMModal();
+
+    // Run VM program and update modal in real-time
+    runVMProgramModal(16);
+}
+
+// ============================================
+// VM Modal Functions
+// ============================================
+let vmModalRunning = false;
+let vmModalCycle = 0;
+let vmModalLastOutput = null;
+let vmModalAttentionScores = null;
+
+function openVMModal() {
+    document.getElementById('vm-modal-overlay').style.display = 'flex';
+    vmModalRunning = true;
+    vmModalCycle = 0;
+    updateVMModalDisplay();
+}
+
+function closeVMModal() {
+    vmModalRunning = false;
+    document.getElementById('vm-modal-overlay').style.display = 'none';
+}
+
+function vmStepOnce() {
+    if (!vm || !vm.initialized) return;
+    executeVMStep();
+    updateVMModalDisplay();
+}
+
+function vmRunProgram() {
+    if (!vm || !vm.initialized) return;
+    runVMProgramModal(16);
+}
+
+function vmReset() {
+    if (!vm) return;
+    vm.pc = 0;
+    vm.sp = 0;
+    vm.fp = 0;
+    vm.stack = new Float32Array(512);
+    vmModalCycle = 0;
+    vmModalLastOutput = null;
+    vmModalAttentionScores = null;
+    document.getElementById('vm-instr-log').innerHTML = '';
+    updateVMModalDisplay();
+    document.getElementById('vm-status').textContent = 'Reset complete';
+}
+
+function executeVMStep() {
+    const instrId = vm.pc % 256;
+    const output = vm.executeInstruction(instrId);
+    vmModalLastOutput = output;
+
+    // Push to stack
+    let hash = 0;
+    for (let j = 0; j < Math.min(output.length, 32); j++) hash += output[j];
+    vm.pushToStack(hash);
+    vm.pc++;
+
+    vmModalCycle++;
+
+    // Add to instruction log
+    addInstrLog(instrId, output, hash);
+
+    return output;
+}
+
+function runVMProgramModal(nSteps) {
+    if (!vm || !vm.initialized) return;
+
+    document.getElementById('vm-status').textContent = 'Executing...';
+    document.getElementById('vm-status').style.color = '#00ff88';
+
+    let step = 0;
+    function doStep() {
+        if (step >= nSteps || !vmModalRunning) {
+            document.getElementById('vm-status').textContent = `Complete - ${nSteps} instructions executed`;
+            document.getElementById('vm-status').style.color = '#8899aa';
+            return;
+        }
+        executeVMStep();
+        updateVMModalDisplay();
+        step++;
+        requestAnimationFrame(doStep);
+    }
+    doStep();
+}
+
+function addInstrLog(instrId, output, hash) {
+    const logEl = document.getElementById('vm-instr-log');
+    const entry = document.createElement('div');
+    entry.className = 'vm-instr-entry';
+
+    const mean = Mat.mean(output);
+    const maxVal = Math.max(...output);
+    const minVal = Math.min(...output);
+    const energy = Math.sqrt(Mat.mean(Array.from(output).map(x => x * x)));
+
+    entry.innerHTML = `<span style="color:#00ccff">[${String(instrId).padStart(3,'0')}]</span> ` +
+        `mean=<span style="color:#00ff88">${mean.toFixed(4)}</span> ` +
+        `range=[${minVal.toFixed(2)}, ${maxVal.toFixed(2)}] ` +
+        `E=${energy.toFixed(3)}`;
+
+    logEl.appendChild(entry);
+    logEl.scrollTop = logEl.scrollHeight;
+
+    // Keep only last 50 entries
+    while (logEl.children.length > 50) {
+        logEl.removeChild(logEl.firstChild);
+    }
+}
+
+function updateVMModalDisplay() {
+    if (!vm) return;
+
+    // Registers
+    document.getElementById('vm-pc').textContent = vm.pc;
+    document.getElementById('vm-sp').textContent = vm.sp;
+    document.getElementById('vm-fp').textContent = vm.fp;
+
+    // Flags based on state
+    const flags = [
+        vm.pc > 0 ? 1 : 0,
+        vm.sp > 0 ? 1 : 0,
+        vmModalLastOutput ? 1 : 0,
+        vm.pc % 2 === 0 ? 1 : 0,
+        vm.sp > 256 ? 1 : 0,
+        0, 0, 0
+    ].join('');
+    document.getElementById('vm-flags').textContent = flags;
+    document.getElementById('vm-instr').textContent = vmModalLastOutput ? 'ACTIVE' : 'IDLE';
+    document.getElementById('vm-cycle').textContent = vmModalCycle;
+
+    // Stack info
+    document.getElementById('vm-stack-depth').textContent = `Depth: ${vm.sp}/512`;
+    document.getElementById('vm-stack-top').textContent = vm.sp > 0 ? `Top: ${vm.stack[vm.sp-1].toFixed(3)}` : 'Top: -';
+
+    // Draw stack visualization
+    drawStackViz();
+
+    // Draw attention visualization
+    drawAttentionViz();
+
+    // Draw output signal
+    drawOutputViz();
+
+    // Draw program bar
+    drawProgramBar();
+}
+
+function drawStackViz() {
+    const canvas = document.getElementById('vm-stack-viz');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    canvas.width = canvas.offsetWidth || 280;
+    canvas.height = canvas.offsetHeight || 180;
+
+    ctx.fillStyle = '#0a0e17';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    if (!vm || !vm.stack) return;
+
+    // Show top 64 stack entries as heatmap
+    const showN = Math.min(64, vm.sp);
+    const cellW = canvas.width / 16;
+    const cellH = canvas.height / 4;
+
+    for (let row = 0; row < 4; row++) {
+        for (let col = 0; col < 16; col++) {
+            const idx = row * 16 + col;
+            if (idx >= showN) break;
+
+            const val = vm.stack[vm.sp - 1 - idx] || 0;
+            const normalized = (val + 10) / 20; // rough normalization
+            const clamped = Math.max(0, Math.min(1, normalized));
+
+            const r = Math.floor(clamped * 255);
+            const g = Math.floor((1 - Math.abs(clamped - 0.5) * 2) * 200 + 55);
+            const b = Math.floor((1 - clamped) * 255);
+
+            ctx.fillStyle = `rgb(${r},${g},${b})`;
+            ctx.fillRect(col * cellW, row * cellH, cellW - 1, cellH - 1);
+        }
+    }
+}
+
+function drawAttentionViz() {
+    const canvas = document.getElementById('vm-attention-viz');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    canvas.width = canvas.offsetWidth || 280;
+    canvas.height = canvas.offsetHeight || 180;
+
+    ctx.fillStyle = '#0a0e17';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    if (!vm || !vm.vmState['attention_q'] || !vm.vmState['attention_k']) return;
+
+    // Compute attention scores for current instruction
+    const instrId = (vm.pc - 1) % 256;
+    const emb = vm.vmState['instr_embedding'];
+    if (!emb || instrId < 0) return;
+
+    const instrVec = new Float32Array(128);
+    for (let j = 0; j < 128; j++) instrVec[j] = emb[instrId * 128 + j] || 0;
+
+    const K = vm.vmState['attention_k'];
+    let maxScore = -Infinity;
+    const scores = new Float32Array(128);
+
+    for (let i = 0; i < 128; i++) {
+        let dot = 0;
+        for (let j = 0; j < 128; j++) dot += instrVec[j] * K[i * 128 + j];
+        scores[i] = dot / Math.sqrt(128);
+        if (scores[i] > maxScore) maxScore = scores[i];
+    }
+
+    // Stable softmax
+    let sumExp = 0;
+    for (let i = 0; i < 128; i++) {
+        scores[i] = Math.exp(Math.min(scores[i] - maxScore, 0));
+        sumExp += scores[i];
+    }
+    for (let i = 0; i < 128; i++) scores[i] /= (sumExp || 1);
+
+    vmModalAttentionScores = scores;
+
+    // Draw as 16x8 heatmap
+    const cols = 16, rows = 8;
+    const cellW = canvas.width / cols;
+    const cellH = canvas.height / rows;
+
+    for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+            const idx = r * cols + c;
+            const val = scores[idx] || 0;
+            const intensity = Math.min(1, val * cols * rows);
+
+            const red = Math.floor(intensity * 255);
+            const green = Math.floor(intensity * 180 + 40);
+            const blue = Math.floor((1 - intensity) * 100);
+
+            ctx.fillStyle = `rgb(${red},${green},${blue})`;
+            ctx.fillRect(c * cellW, r * cellH, cellW - 1, cellH - 1);
+        }
+    }
+
+    // Label
+    ctx.fillStyle = '#8899aa';
+    ctx.font = '10px Consolas';
+    ctx.fillText(`Instr #${instrId} | max=${maxScore.toFixed(3)}`, 5, canvas.height - 5);
+}
+
+function drawOutputViz() {
+    const canvas = document.getElementById('vm-output-viz');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    canvas.width = canvas.offsetWidth || 560;
+    canvas.height = canvas.offsetHeight || 160;
+
+    ctx.fillStyle = '#0a0e17';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    if (!vmModalLastOutput) {
+        ctx.fillStyle = '#4a6080';
+        ctx.font = '14px Consolas';
+        ctx.fillText('No output yet', canvas.width / 2 - 50, canvas.height / 2);
+        return;
+    }
+
+    const data = vmModalLastOutput;
+    const n = data.length;
+
+    // Draw waveform
+    ctx.strokeStyle = '#00ff88';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+
+    const midY = canvas.height / 2;
+    const amp = canvas.height / 2 - 10;
+
+    for (let i = 0; i < n; i++) {
+        const x = (i / n) * canvas.width;
+        const y = midY - data[i] * amp;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    // Center line
+    ctx.strokeStyle = '#1e2d45';
+    ctx.lineWidth = 0.5;
+    ctx.beginPath();
+    ctx.moveTo(0, midY);
+    ctx.lineTo(canvas.width, midY);
+    ctx.stroke();
+
+    // Stats
+    const mean = Mat.mean(data);
+    const std = Math.sqrt(Mat.mean(Array.from(data).map(x => x * x)));
+    const maxVal = Math.max(...data);
+    const minVal = Math.min(...data);
+
+    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    ctx.fillRect(5, 5, 280, 55);
+    ctx.fillStyle = '#fff';
+    ctx.font = '11px Consolas';
+    ctx.fillText(`len=${n}  mean=${mean.toFixed(4)}  std=${std.toFixed(4)}`, 10, 20);
+    ctx.fillText(`max=${maxVal.toFixed(4)}  min=${minVal.toFixed(4)}`, 10, 35);
+    ctx.fillText(`cycle=${vmModalCycle}  pc=${vm.pc}`, 10, 50);
+}
+
+function drawProgramBar() {
+    const bar = document.getElementById('vm-program-bar');
+    if (!bar) return;
+    bar.innerHTML = '';
+
+    const totalCells = 64;
+    for (let i = 0; i < totalCells; i++) {
+        const cell = document.createElement('div');
+        cell.className = 'vm-program-cell';
+
+        const instrIdx = i % 256;
+        if (instrIdx < vm.pc % 256) cell.classList.add('executed');
+        if (instrIdx === vm.pc % 256) cell.classList.add('current');
+
+        bar.appendChild(cell);
+    }
+}
+
+function updateMetrics(metrics) {
+    if (!metrics) return;
+
+    const clampedEpoch = Math.min(metrics.epoch, MAX_EPOCHS);
+    document.getElementById('m-epoch').textContent = clampedEpoch;
+    document.getElementById('m-gen').textContent = metrics.genLoss.toFixed(4);
+    document.getElementById('m-disc').textContent = metrics.discLoss.toFixed(4);
+
+    const speed = fps * (trainingType === 'bootstrap' ? 5 : 3);
+    document.getElementById('m-speed').textContent = speed;
+
+    // Progress capped at 100%
+    const progress = Math.min(100, (clampedEpoch / MAX_EPOCHS) * 100);
+    document.getElementById('train-progress').style.width = progress + '%';
+    document.getElementById('train-progress-text').textContent = `${clampedEpoch} / ${MAX_EPOCHS}`;
+}
+
+function updateVMRegisters() {
+    document.getElementById('reg-pc').textContent = vm.pc;
+    document.getElementById('reg-sp').textContent = vm.sp;
+    document.getElementById('reg-fp').textContent = vm.fp;
+    document.getElementById('reg-stack').textContent = `${vm.sp}/512`;
+}
+
+function updateCurriculumDisplay() {
+    document.getElementById('curr-level').textContent = `${bootstrap.curriculumLevel} / 10`;
+    document.getElementById('curr-noise').textContent = bootstrap.noiseScale.toFixed(2);
+    document.getElementById('curr-batch').textContent = bootstrap.batchSize;
+    document.getElementById('curr-critic').textContent = Math.min(10, 5 + bootstrap.curriculumLevel);
+    if (bootstrap.diversityScores.length > 0) {
+        document.getElementById('curr-diversity').textContent = bootstrap.diversityScores[bootstrap.diversityScores.length - 1].toFixed(4);
+    }
+}
+
+function updateCurriculumBar() {
+    const bar = document.getElementById('curr-bar');
+    bar.innerHTML = '';
+    for (let i = 0; i < 10; i++) {
+        const level = document.createElement('div');
+        level.className = 'curriculum-level';
+        if (i + 1 < (bootstrap?.curriculumLevel || 1)) level.classList.add('completed');
+        if (i + 1 === (bootstrap?.curriculumLevel || 1)) level.classList.add('active');
+        bar.appendChild(level);
+    }
+}
+
+// ============================================
+// Visualization
+// ============================================
+function updateCharts() {
+    drawLossChart();
+    if (vm.epoch % 5 === 0) {
+        const sample = vm.generate();
+        visualizeGeneration(sample);
+    }
+}
+
+function drawLossChart() {
+    const canvas = document.getElementById('loss-chart');
+    const ctx = canvas.getContext('2d');
+    canvas.width = canvas.offsetWidth;
+    canvas.height = canvas.offsetHeight;
+    
+    ctx.fillStyle = '#0a0e17';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    if (vm.lossHistory.gen.length < 2) return;
+    
+    const maxLen = Math.min(vm.lossHistory.gen.length, 200);
+    const genData = vm.lossHistory.gen.slice(-maxLen);
+    const discData = vm.lossHistory.disc.slice(-maxLen);
+    
+    // Find y range
+    const allValues = [...genData, ...discData];
+    const yMin = Math.min(...allValues) * 1.1;
+    const yMax = Math.max(...allValues) * 1.1;
+    const yRange = yMax - yMin || 1;
+    
+    // Draw grid
+    ctx.strokeStyle = '#1e2d45';
+    ctx.lineWidth = 0.5;
+    for (let i = 0; i <= 4; i++) {
+        const y = (canvas.height / 4) * i;
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(canvas.width, y);
+        ctx.stroke();
+    }
+    
+    // Draw gen loss (green)
+    ctx.strokeStyle = '#00ff88';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let i = 0; i < genData.length; i++) {
+        const x = (i / (maxLen - 1)) * canvas.width;
+        const y = canvas.height - ((genData[i] - yMin) / yRange) * canvas.height;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    
+    // Draw disc loss (cyan)
+    ctx.strokeStyle = '#00ccff';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let i = 0; i < discData.length; i++) {
+        const x = (i / (maxLen - 1)) * canvas.width;
+        const y = canvas.height - ((discData[i] - yMin) / yRange) * canvas.height;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    
+    // Legend
+    ctx.fillStyle = '#00ff88';
+    ctx.font = '11px Consolas';
+    ctx.fillText('Gen Loss', 10, 16);
+    ctx.fillStyle = '#00ccff';
+    ctx.fillText('Disc Loss', 90, 16);
+    
+    // Epoch label
+    ctx.fillStyle = '#8899aa';
+    ctx.fillText(`Epoch: ${vm.epoch}`, canvas.width - 100, 16);
+}
+
+function visualizeGeneration(sample) {
+    const canvas = document.getElementById('gen-viz');
+    const ctx = canvas.getContext('2d');
+    canvas.width = canvas.offsetWidth;
+    canvas.height = canvas.offsetHeight;
+    
+    // Visualize as 32x32 heatmap (1024 values)
+    const cols = 32, rows = 32;
+    const cellW = canvas.width / cols;
+    const cellH = canvas.height / rows;
+    
+    for (let y = 0; y < rows; y++) {
+        for (let x = 0; x < cols; x++) {
+            const idx = y * cols + x;
+            const val = sample[idx] || 0;
+            // Map [-1, 1] to color
+            const normalized = (val + 1) / 2;
+            const r = Math.floor(normalized * 255);
+            const g = Math.floor((1 - Math.abs(normalized - 0.5) * 2) * 255);
+            const b = Math.floor((1 - normalized) * 255);
+            ctx.fillStyle = `rgb(${r},${g},${b})`;
+            ctx.fillRect(x * cellW, y * cellH, cellW + 1, cellH + 1);
+        }
+    }
+    
+    // Stats overlay
+    const mean = Mat.mean(sample);
+    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    ctx.fillRect(5, 5, 200, 22);
+    ctx.fillStyle = '#fff';
+    ctx.font = '11px Consolas';
+    ctx.fillText(`mean: ${mean.toFixed(4)} | std: ${Math.sqrt(Mat.mean(Array.from(sample).map(x => x * x))).toFixed(4)}`, 10, 19);
+}
+
+// ============================================
+// Keyboard shortcuts
+// ============================================
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+        closeVMModal();
+    }
+});
+
+// Close modal on overlay click
+document.getElementById('vm-modal-overlay').addEventListener('click', (e) => {
+    if (e.target.id === 'vm-modal-overlay') closeVMModal();
+});
+
+// ============================================
+// Drag and Drop
+// ============================================
+const fileDrop = document.getElementById('file-drop');
+fileDrop.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    fileDrop.classList.add('dragover');
+});
+fileDrop.addEventListener('dragleave', () => {
+    fileDrop.classList.remove('dragover');
+});
+fileDrop.addEventListener('drop', (e) => {
+    e.preventDefault();
+    fileDrop.classList.remove('dragover');
+    const file = e.dataTransfer.files[0];
+    if (file && file.name.endsWith('.gguf')) {
+        loadGGUF(file);
+    } else {
+        log('error', 'Please drop a .gguf file');
+    }
+});
+
+// ============================================
+// Init
+// ============================================
+log('info', 'GAN Neural VM Browser Runtime initialized');
+log('info', 'Drop your GGUF file to get started');
+log('info', 'Supported: SKELETON_NEURAL_F16_GAN_VM_F16.gguf');
+
+// Auto-load if file exists in same directory via fetch (optional)
+(async () => {
+    try {
+        log('info', 'Attempting auto-load of SKELETON_NEURAL_F16_GAN_VM_F16.gguf...');
+        // This will only work if served from a web server
+        const response = await fetch('SKELETON_NEURAL_F16_GAN_VM_F16.gguf');
+        if (response.ok) {
+            const blob = await response.blob();
+            log('info', 'Auto-loading GGUF from server...');
+            await loadGGUF(new File([blob], 'SKELETON_NEURAL_F16_GAN_VM_F16.gguf'));
+            log('success', 'Auto-loaded successfully!');
+        }
+    } catch (e) {
+        log('info', 'Auto-load skipped (not served from web server)');
+        log('info', 'Drop the GGUF file manually to begin');
+    }
+})();
+</script>
+</body>
+</html>

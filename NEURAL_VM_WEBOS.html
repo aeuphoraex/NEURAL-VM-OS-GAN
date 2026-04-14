@@ -1,0 +1,1435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Neural VM WebOS - Generative App Engine</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;user-select:none}
+html,body{width:100%;height:100%;overflow:hidden;font-family:'Segoe UI',system-ui,sans-serif}
+#desktop{width:100%;height:100%;background:linear-gradient(135deg,#0a0e17,#0d1520 40%,#111827 70%,#0a192f);position:relative}
+#desktop-icons{position:absolute;top:20px;left:20px;display:flex;flex-direction:column;gap:16px;z-index:1}
+.desktop-icon{width:80px;text-align:center;cursor:pointer;padding:8px;border-radius:8px;transition:all .2s}
+.desktop-icon:hover{background:rgba(0,255,136,.1);transform:scale(1.05)}
+.desktop-icon:active{transform:scale(.95)}
+.desktop-icon .icon{font-size:36px;margin-bottom:4px}
+.desktop-icon .label{font-size:11px;color:#e0e0e0;text-shadow:0 1px 3px rgba(0,0,0,.8)}
+#taskbar{position:absolute;bottom:0;left:0;right:0;height:48px;background:linear-gradient(180deg,rgba(13,21,32,.95),rgba(10,14,23,.98));border-top:1px solid rgba(0,255,136,.2);display:flex;align-items:center;z-index:1000;backdrop-filter:blur(10px)}
+#start-btn{padding:8px 16px;background:linear-gradient(135deg,#00ff88,#00cc66);border:none;border-radius:6px;cursor:pointer;font-weight:700;font-size:13px;color:#000;margin-left:8px;transition:all .2s}
+#start-btn:hover{background:linear-gradient(135deg,#00ffaa,#00ee88);transform:scale(1.05)}
+#taskbar-windows{flex:1;display:flex;gap:4px;margin:0 10px;overflow-x:auto}
+.taskbar-item{padding:6px 12px;background:rgba(30,45,69,.6);border:1px solid rgba(0,255,136,.1);border-radius:4px;cursor:pointer;font-size:12px;color:#8899aa;white-space:nowrap;transition:all .2s;max-width:160px;overflow:hidden;text-overflow:ellipsis}
+.taskbar-item:hover{background:rgba(30,45,69,.9)}
+.taskbar-item.active{background:rgba(0,255,136,.15);border-color:rgba(0,255,136,.4);color:#00ff88}
+#system-tray{display:flex;align-items:center;gap:12px;padding:0 16px;font-size:12px;color:#8899aa}
+#clock{font-family:'Consolas',monospace;font-size:12px;color:#00ff88}
+#start-menu{position:absolute;bottom:56px;left:8px;width:320px;background:rgba(17,24,39,.98);border:1px solid rgba(0,255,136,.2);border-radius:12px;display:none;z-index:1001;backdrop-filter:blur(10px);box-shadow:0 10px 40px rgba(0,0,0,.5)}
+#start-menu.show{display:block}
+.start-menu-header{padding:20px;border-bottom:1px solid #1e2d45}
+.start-menu-header h2{font-size:16px;background:linear-gradient(90deg,#00ff88,#00ccff);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.start-menu-header p{font-size:11px;color:#8899aa;margin-top:4px}
+.start-menu-items{padding:10px;max-height:400px;overflow-y:auto}
+.start-menu-item{display:flex;align-items:center;gap:12px;padding:10px;border-radius:6px;cursor:pointer;transition:all .2s}
+.start-menu-item:hover{background:rgba(0,255,136,.1)}
+.start-menu-item .sm-icon{font-size:20px}
+.start-menu-item .sm-label{font-size:13px;color:#e0e0e0}
+.start-menu-item .sm-desc{font-size:11px;color:#8899aa}
+.window{position:absolute;background:#111827;border:1px solid #1e2d45;border-radius:10px;box-shadow:0 10px 40px rgba(0,0,0,.5);display:flex;flex-direction:column;min-width:400px;min-height:300px;z-index:100}
+.window.maximized{top:0!important;left:0!important;width:100%!important;height:calc(100% - 48px)!important;border-radius:0}
+.window.minimized{display:none!important}
+.window.focused{border-color:rgba(0,255,136,.4);box-shadow:0 10px 60px rgba(0,255,136,.1)}
+.window-header{background:#0d1520;padding:0 12px;height:36px;display:flex;align-items:center;justify-content:space-between;cursor:move;border-radius:10px 10px 0 0;border-bottom:1px solid #1e2d45}
+.window-title{font-size:13px;font-weight:600;color:#e0e0e0;display:flex;align-items:center;gap:8px}
+.window-controls{display:flex;gap:4px}
+.window-btn{width:28px;height:28px;border:none;border-radius:4px;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;transition:all .2s;background:transparent;color:#8899aa}
+.window-btn:hover{background:rgba(255,255,255,.1);color:#fff}
+.window-btn.close:hover{background:#dc2626;color:#fff}
+.window-body{flex:1;overflow:hidden;position:relative}
+.resize-handle{position:absolute;bottom:0;right:0;width:16px;height:16px;cursor:nwse-resize}
+.resize-handle::after{content:'';position:absolute;bottom:4px;right:4px;width:8px;height:8px;border-right:2px solid #4a6080;border-bottom:2px solid #4a6080}
+.vm-btn{padding:10px 15px;border:none;border-radius:6px;cursor:pointer;font-weight:600;font-size:13px;transition:all .2s}
+.vm-btn-primary{background:linear-gradient(135deg,#00ff88,#00cc66);color:#000}
+.vm-btn-primary:hover{background:linear-gradient(135deg,#00ffaa,#00ee88)}
+.vm-btn-secondary{background:#1e2d45;color:#e0e0e0}
+.vm-btn-secondary:hover{background:#2a3f5c}
+.vm-btn-danger{background:#dc2626;color:#fff}
+.vm-btn-danger:hover{background:#ef4444}
+.vm-btn:disabled{opacity:.4;cursor:not-allowed}
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-track{background:#0a0e17}
+::-webkit-scrollbar-thumb{background:#1e2d45;border-radius:4px}
+::-webkit-scrollbar-thumb:hover{background:#2a3f5c}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+.context-menu{position:absolute;background:rgba(17,24,39,.98);border:1px solid #1e2d45;border-radius:8px;padding:6px;z-index:2000;min-width:180px;backdrop-filter:blur(10px);box-shadow:0 5px 20px rgba(0,0,0,.5)}
+.context-menu-item{padding:8px 12px;border-radius:4px;cursor:pointer;font-size:12px;color:#e0e0e0;display:flex;align-items:center;gap:8px}
+.context-menu-item:hover{background:rgba(0,255,136,.1)}
+.context-menu-separator{height:1px;background:#1e2d45;margin:4px 0}
+
+/* Neural VM App Styles */
+.nvm-app{width:100%;height:100%;display:flex;flex-direction:column}
+.nvm-toolbar{background:#0d1520;padding:10px 15px;border-bottom:1px solid #1e2d45;display:flex;align-items:center;gap:10px}
+.nvm-toolbar .dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+.nvm-toolbar .dot.idle{background:#4a6080}
+.nvm-toolbar .dot.running{background:#00ff88;box-shadow:0 0 8px #00ff88;animation:pulse 1.5s infinite}
+.nvm-toolbar .dot.complete{background:#00ccff}
+.nvm-content{flex:1;display:grid;grid-template-columns:280px 1fr 260px;gap:0;overflow:hidden}
+.nvm-panel{background:#111827;display:flex;flex-direction:column;overflow:hidden}
+.nvm-panel+.nvm-panel{border-left:1px solid #1e2d45}
+.nvm-panel-header{background:#0d1520;padding:10px 15px;border-bottom:1px solid #1e2d45;font-size:11px;font-weight:600;color:#00ff88;text-transform:uppercase;letter-spacing:1px}
+.nvm-panel-body{padding:12px;flex:1;overflow-y:auto}
+.nvm-controls{display:flex;flex-direction:column;gap:6px}
+.nvm-file-drop{border:2px dashed #1e2d45;border-radius:8px;padding:15px;text-align:center;cursor:pointer;transition:all .3s}
+.nvm-file-drop:hover,.nvm-file-drop.dragover{border-color:#00ff88;background:rgba(0,255,136,.05)}
+.nvm-stat{background:#0d1520;padding:8px 10px;border-radius:4px;border:1px solid #1e2d45}
+.nvm-stat-label{font-size:10px;color:#8899aa}
+.nvm-stat-value{font-size:16px;font-weight:700;color:#00ff88;font-family:'Consolas',monospace}
+.nvm-stat-value.info{color:#00ccff}
+.nvm-stat-value.warn{color:#ffaa00}
+.nvm-console{background:#0a0e17;border-radius:6px;padding:8px;font-family:'Consolas',monospace;font-size:10px;max-height:180px;overflow-y:auto;line-height:1.5;margin-top:8px}
+.nvm-console-line{margin:1px 0}
+.nvm-chart{background:#0a0e17;border-radius:6px;border:1px solid #1e2d45;padding:8px;margin-top:8px}
+.nvm-chart canvas{width:100%;border-radius:4px}
+.nvm-progress-bar{background:#1e2d45;border-radius:8px;height:4px;overflow:hidden;margin-top:8px}
+.nvm-progress-fill{background:linear-gradient(90deg,#00ff88,#00ccff);height:100%;transition:width .3s}
+.nvm-reg{display:flex;justify-content:space-between;padding:4px 8px;background:#0d1520;border-radius:3px;font-size:11px;margin-top:4px}
+.nvm-reg-label{color:#8899aa}
+.nvm-reg-val{color:#00ff88;font-family:'Consolas',monospace}
+
+/* Generated App Styles */
+.gen-app-container{width:100%;height:100%;display:flex;flex-direction:column}
+.gen-app-header{background:#0d1520;padding:8px 12px;border-bottom:1px solid #1e2d45;display:flex;align-items:center;gap:8px}
+.gen-app-code{background:#0a0e17;padding:8px;font-family:'Consolas',monospace;font-size:10px;color:#00ff88;max-height:100px;overflow-y:auto;border-radius:4px;margin:8px}
+.gen-app-canvas-wrap{flex:1;background:#0a0e17;display:flex;align-items:center;justify-content:center;border-radius:6px;margin:8px;overflow:hidden}
+.gen-app-canvas-wrap canvas{max-width:100%;max-height:100%}
+
+/* App Gallery */
+.app-gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px;padding:12px;overflow-y:auto;max-height:calc(100vh - 200px)}
+.app-card{background:#0d1520;border:1px solid #1e2d45;border-radius:8px;overflow:hidden;cursor:pointer;transition:all .2s}
+.app-card:hover{border-color:#00ff88;transform:translateY(-2px);box-shadow:0 5px 15px rgba(0,255,136,.15)}
+.app-card canvas{width:100%;height:100px;background:#0a0e17}
+.app-card-info{padding:8px}
+.app-card-name{font-size:12px;font-weight:600;color:#e0e0e0}
+.app-card-type{font-size:10px;color:#8899aa}
+.app-card-stats{font-size:10px;color:#00ff88;margin-top:4px}
+</style>
+</head>
+<body>
+<div id="desktop">
+    <div id="desktop-icons">
+        <div class="desktop-icon" onclick="openNeuralVM()"><div class="icon">⚡</div><div class="label">Neural VM</div></div>
+        <div class="desktop-icon" onclick="openAppGallery()"><div class="icon">🎮</div><div class="label">App Gallery</div></div>
+        <div class="desktop-icon" onclick="openTerminal()"><div class="icon">💻</div><div class="label">Terminal</div></div>
+        <div class="desktop-icon" onclick="openSystemInfo()"><div class="icon">ℹ️</div><div class="label">System Info</div></div>
+    </div>
+    <div id="taskbar">
+        <button id="start-btn" onclick="toggleStartMenu()">⚡ WebOS</button>
+        <div id="taskbar-windows"></div>
+        <div id="system-tray"><span id="fps-display">-- FPS</span><span id="clock">00:00:00</span></div>
+    </div>
+    <div id="start-menu">
+        <div class="start-menu-header"><h2>⚡ Neural VM WebOS</h2><p>Generative App Engine</p></div>
+        <div class="start-menu-items">
+            <div class="start-menu-item" onclick="openNeuralVM();toggleStartMenu()"><span class="sm-icon">⚡</span><div><div class="sm-label">Neural VM</div><div class="sm-desc">Generate & run programs</div></div></div>
+            <div class="start-menu-item" onclick="openAppGallery();toggleStartMenu()"><span class="sm-icon">🎮</span><div><div class="sm-label">App Gallery</div><div class="sm-desc">Browse generated apps</div></div></div>
+            <div class="start-menu-item" onclick="openTerminal();toggleStartMenu()"><span class="sm-icon">💻</span><div><div class="sm-label">Terminal</div><div class="sm-desc">CLI interface</div></div></div>
+            <div class="start-menu-item" onclick="openSystemInfo();toggleStartMenu()"><span class="sm-icon">ℹ️</span><div><div class="sm-label">System Info</div><div class="sm-desc">System details</div></div></div>
+            <div style="height:1px;background:#1e2d45;margin:8px 0"></div>
+            <div class="start-menu-item" onclick="location.reload()"><span class="sm-icon">🔄</span><div><div class="sm-label">Restart WebOS</div></div></div>
+        </div>
+    </div>
+</div>
+
+<script>
+// ============================================
+// WINDOW MANAGER
+// ============================================
+let windows=[],winIdCounter=0,focusedWindow=null,dragState=null,resizeState=null;
+function createWindow(o){
+    const id='win-'+(++winIdCounter);
+    const el=document.createElement('div');
+    el.className='window';el.id=id;
+    el.style.width=(o.width||1200)+'px';el.style.height=(o.height||700)+'px';
+    el.style.left=(o.x||50+windows.length*30)+'px';el.style.top=(o.y||50+windows.length*30)+'px';
+    el.style.zIndex=100+windows.length;
+    el.innerHTML=`<div class="window-header" onmousedown="startDrag(event,'${id}')"><div class="window-title">${o.icon||'📄'} ${o.title||'Window'}</div><div class="window-controls"><button class="window-btn" onclick="minimizeWindow('${id}')">─</button><button class="window-btn" onclick="maximizeWindow('${id}')">☐</button><button class="window-btn close" onclick="closeWindow('${id}')">✕</button></div></div><div class="window-body"></div><div class="resize-handle" onmousedown="startResize(event,'${id}')"></div>`;
+    document.getElementById('desktop').appendChild(el);
+    const w={id,title:o.title||'Window',icon:o.icon||'📄',element:el,minimized:false,maximized:false,prevState:null,data:o.data||{}};
+    windows.push(w);
+    el.addEventListener('mousedown',()=>focusWindow(id));
+    focusWindow(id);updateTaskbar();
+    if(o.onCreated)o.onCreated(el.querySelector('.window-body'),w);
+    return w;
+}
+function focusWindow(id){windows.forEach(w=>w.element.classList.remove('focused'));const w=windows.find(x=>x.id===id);if(w){w.element.style.zIndex=100+windows.length+1;w.element.classList.add('focused');focusedWindow=w;updateTaskbar()}}
+function minimizeWindow(id){const w=windows.find(x=>x.id===id);if(w){w.minimized=true;w.element.classList.add('minimized');updateTaskbar()}}
+function maximizeWindow(id){const w=windows.find(x=>x.id===id);if(!w)return;if(w.maximized){w.element.classList.remove('maximized');if(w.prevState){Object.assign(w.element.style,w.prevState)}w.maximized=false}else{w.prevState={left:w.element.style.left,top:w.element.style.top,width:w.element.style.width,height:w.element.style.height};w.element.classList.add('maximized');w.maximized=true}}
+function closeWindow(id){const w=windows.find(x=>x.id===id);if(w){w.element.remove();windows=windows.filter(x=>x.id!==id);updateTaskbar()}}
+function updateTaskbar(){const c=document.getElementById('taskbar-windows');c.innerHTML='';windows.forEach(w=>{const i=document.createElement('div');i.className='taskbar-item'+(w===focusedWindow&&!w.minimized?' active':'');i.textContent=w.icon+' '+w.title;i.onclick=()=>{if(w.minimized){w.minimized=false;w.element.classList.remove('minimized');focusWindow(w.id)}else if(w===focusedWindow){minimizeWindow(w.id)}else{focusWindow(w.id)}};c.appendChild(i)})}
+function startDrag(e,id){if(e.target.closest('.window-controls'))return;const w=windows.find(x=>x.id===id);if(!w||w.maximized)return;dragState={id,startX:e.clientX,startY:e.clientY,origLeft:parseInt(w.element.style.left),origTop:parseInt(w.element.style.top)};e.preventDefault()}
+function startResize(e,id){const w=windows.find(x=>x.id===id);if(!w||w.maximized)return;resizeState={id,startX:e.clientX,startY:e.clientY,origW:w.element.offsetWidth,origH:w.element.offsetHeight};e.preventDefault();e.stopPropagation()}
+document.addEventListener('mousemove',e=>{if(dragState){const w=windows.find(x=>x.id===dragState.id);if(w){w.element.style.left=(dragState.origLeft+e.clientX-dragState.startX)+'px';w.element.style.top=Math.max(0,dragState.origTop+e.clientY-dragState.startY)+'px'}}if(resizeState){const w=windows.find(x=>x.id===resizeState.id);if(w){w.element.style.width=Math.max(400,resizeState.origW+e.clientX-resizeState.startX)+'px';w.element.style.height=Math.max(300,resizeState.origH+e.clientY-resizeState.startY)+'px'}}});
+document.addEventListener('mouseup',()=>{dragState=null;resizeState=null});
+function toggleStartMenu(){document.getElementById('start-menu').classList.toggle('show')}
+document.addEventListener('click',e=>{if(!e.target.closest('#start-menu')&&!e.target.closest('#start-btn'))document.getElementById('start-menu').classList.remove('show')});
+function updateClock(){const n=new Date();document.getElementById('clock').textContent=n.toLocaleTimeString('en-US',{hour12:false})}
+setInterval(updateClock,1000);updateClock();
+
+// ============================================
+// NEURAL VM ISA - Instruction Set Architecture
+// ============================================
+const OPCODES = {
+    NOP:   0x00, // No operation
+    PUSH:  0x01, // Push value to stack
+    POP:   0x02, // Pop from stack
+    ADD:   0x03, // Add top two values
+    SUB:   0x04, // Subtract
+    MUL:   0x05, // Multiply
+    DIV:   0x06, // Divide
+    MOD:   0x07, // Modulo
+    DUP:   0x08, // Duplicate top of stack
+    SWAP:  0x09, // Swap top two values
+    LOAD:  0x0A, // Load from memory
+    STORE: 0x0B, // Store to memory
+    JMP:   0x0C, // Jump to address
+    JZ:    0x0D, // Jump if zero
+    JNZ:   0x0E, // Jump if not zero
+    CALL:  0x0F, // Call subroutine
+    RET:   0x10, // Return from subroutine
+    // Drawing ops
+    PIXEL: 0x20, // Draw pixel (x, y, color)
+    LINE:  0x21, // Draw line (x1, y1, x2, y2, color)
+    RECT:  0x22, // Draw rect (x, y, w, h, color)
+    CIRCLE:0x23, // Draw circle (x, y, r, color)
+    FILL:  0x24, // Fill with color
+    CLEAR: 0x25, // Clear canvas
+    // Wave/signal ops
+    WAVE:  0x30, // Generate wave (type, freq, amp, phase)
+    NOISE: 0x31, // Generate noise (seed)
+    FFT:   0x32, // FFT transform
+    PLOT:  0x33, // Plot value at x
+    // Control
+    IF:    0x40, // Conditional
+    LOOP:  0x41, // Loop n times
+    FOR:   0x42, // For loop
+    END:   0x43, // End block
+    HALT:  0xFF  // Stop execution
+};
+
+const OP_NAMES = {};
+for(const [k,v] of Object.entries(OPCODES)) OP_NAMES[v] = k;
+
+// Program types based on GAN output patterns
+const PROGRAM_TYPES = {
+    VISUAL_ART:    { id: 0, name: 'Visual Art', icon: '🎨', color: '#ff66aa' },
+    PATTERN_GEN:   { id: 1, name: 'Pattern Generator', icon: '🔷', color: '#66aaff' },
+    WAVE_ENGINE:   { id: 2, name: 'Wave Engine', icon: '〰️', color: '#66ffaa' },
+    FRACTAL_GEN:   { id: 3, name: 'Fractal Generator', icon: '🌀', color: '#ffaa66' },
+    GAME_GEN:      { id: 4, name: 'Mini Game', icon: '🎮', color: '#aa66ff' },
+    DATA_VIZ:      { id: 5, name: 'Data Visualization', icon: '📊', color: '#ff6666' },
+    AUDIO_SYNTH:   { id: 6, name: 'Audio Synth', icon: '🎵', color: '#66ffff' },
+    TEXTURE_GEN:   { id: 7, name: 'Texture Generator', icon: '🧱', color: '#ffff66' },
+    PARTICLE_SYS:  { id: 8, name: 'Particle System', icon: '✨', color: '#ff88ff' },
+    MATRIX_OP:     { id: 9, name: 'Matrix Operations', icon: '🔢', color: '#88ff88' }
+};
+
+// ============================================
+// GAN-Powered Program Generator
+// ============================================
+class ProgramGenerator {
+    constructor() {
+        this.epoch = 0;
+        this.generatedPrograms = [];
+        this.lossHistory = { gen: [], disc: [] };
+        this.pc = 0;
+        this.sp = 0;
+
+        // GAN-like weight matrices for program generation
+        this.programWeights = {
+            // Maps latent space to program type probabilities
+            typeWeights: new Float32Array(10 * 128),
+            // Maps to instruction probabilities
+            instrWeights: new Float32Array(256 * 64),
+            // Maps to parameter values
+            paramWeights: new Float32Array(64 * 128)
+        };
+
+        // Initialize with random weights
+        for (const key of Object.keys(this.programWeights)) {
+            const w = this.programWeights[key];
+            for (let i = 0; i < w.length; i++) {
+                let u = 0, v = 0;
+                while (u === 0) u = Math.random();
+                while (v === 0) v = Math.random();
+                w[i] = Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v) * 0.1;
+            }
+        }
+    }
+
+    // Sample from latent space
+    sampleLatent(dim = 128) {
+        const v = new Float32Array(dim);
+        for (let i = 0; i < dim; i++) {
+            let u = 0, v2 = 0;
+            while (u === 0) u = Math.random();
+            while (v2 === 0) v2 = Math.random();
+            v[i] = Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v2);
+        }
+        return v;
+    }
+
+    // GAN forward pass - latent -> program
+    generateProgram(latent = null) {
+        if (!latent) latent = this.sampleLatent();
+
+        // Determine program type from latent (weighted classification)
+        const typeScores = new Float32Array(10);
+        for (let t = 0; t < 10; t++) {
+            let score = 0;
+            for (let i = 0; i < 128; i++) {
+                score += latent[i] * this.programWeights.typeWeights[t * 128 + i];
+            }
+            typeScores[t] = score;
+        }
+
+        // Softmax to get probabilities
+        const maxScore = Math.max(...typeScores);
+        const exps = typeScores.map(s => Math.exp(s - maxScore));
+        const sumExp = exps.reduce((a, b) => a + b, 0);
+        const typeProbs = exps.map(e => e / sumExp);
+
+        // Select program type (weighted random)
+        let r = Math.random();
+        let selectedType = 0;
+        for (let i = 0; i < typeProbs.length; i++) {
+            r -= typeProbs[i];
+            if (r <= 0) { selectedType = i; break; }
+        }
+
+        // Generate bytecode program based on type
+        const program = this.decodeToProgram(latent, selectedType);
+
+        this.epoch++;
+        return program;
+    }
+
+    // Decode latent vector into executable bytecode
+    decodeToProgram(latent, type) {
+        const typeInfo = Object.values(PROGRAM_TYPES)[type];
+        const bytecode = [];
+
+        // Header: type, version, length
+        bytecode.push(0xCA, 0xFE); // Magic
+        bytecode.push(type);
+        bytecode.push(1); // Version
+
+        // Generate program based on type
+        switch (typeInfo.id) {
+            case 0: bytecode.push(...this.generateVisualArt(latent)); break;
+            case 1: bytecode.push(...this.generatePattern(latent)); break;
+            case 2: bytecode.push(...this.generateWaveProgram(latent)); break;
+            case 3: bytecode.push(...this.generateFractal(latent)); break;
+            case 4: bytecode.push(...this.generateMiniGame(latent)); break;
+            case 5: bytecode.push(...this.generateDataViz(latent)); break;
+            case 6: bytecode.push(...this.generateAudioSynth(latent)); break;
+            case 7: bytecode.push(...this.generateTexture(latent)); break;
+            case 8: bytecode.push(...this.generateParticleSystem(latent)); break;
+            case 9: bytecode.push(...this.generateMatrixOp(latent)); break;
+        }
+
+        bytecode.push(OPCODES.HALT);
+
+        // Compute fitness score (complexity, diversity, validity)
+        const fitness = this.computeFitness(bytecode, type);
+
+        return {
+            id: Date.now() + Math.random(),
+            type: typeInfo,
+            typeId: type,
+            bytecode: new Uint8Array(bytecode),
+            latent: new Float32Array(latent),
+            fitness,
+            timestamp: new Date(),
+            name: `${typeInfo.icon} ${typeInfo.name} #${this.generatedPrograms.length + 1}`
+        };
+    }
+
+    generateVisualArt(latent) {
+        const ops = [];
+        ops.push(OPCODES.CLEAR, 0x00);
+
+        const numShapes = Math.floor(Math.abs(latent[0]) * 20) + 5;
+        for (let i = 0; i < numShapes; i++) {
+            const x = Math.floor(((latent[i * 3 + 1] + 1) / 2) * 300);
+            const y = Math.floor(((latent[i * 3 + 2] + 1) / 2) * 300);
+            const color = Math.floor(((latent[i * 3 + 3] + 1) / 2) * 0xFFFFFF);
+
+            const shapeType = Math.floor(Math.abs(latent[i + 10]) * 3);
+            if (shapeType === 0) {
+                ops.push(OPCODES.CIRCLE);
+                ops.push(x & 0xFF, (x >> 8) & 0xFF);
+                ops.push(y & 0xFF, (y >> 8) & 0xFF);
+                ops.push(Math.floor(Math.abs(latent[i + 20]) * 50) + 5);
+                ops.push(color & 0xFF, (color >> 8) & 0xFF, (color >> 16) & 0xFF);
+            } else if (shapeType === 1) {
+                ops.push(OPCODES.RECT);
+                ops.push(x & 0xFF, (x >> 8) & 0xFF);
+                ops.push(y & 0xFF, (y >> 8) & 0xFF);
+                ops.push(Math.floor(Math.abs(latent[i + 20]) * 60) + 10);
+                ops.push(Math.floor(Math.abs(latent[i + 25]) * 60) + 10);
+                ops.push(color & 0xFF, (color >> 8) & 0xFF, (color >> 16) & 0xFF);
+            } else {
+                ops.push(OPCODES.PIXEL, x & 0xFF, (x >> 8) & 0xFF, y & 0xFF, (y >> 8) & 0xFF, color & 0xFF, (color >> 8) & 0xFF, (color >> 16) & 0xFF);
+            }
+        }
+        return ops;
+    }
+
+    generatePattern(latent) {
+        const ops = [];
+        ops.push(OPCODES.CLEAR, 0x00);
+
+        const patternType = Math.floor(Math.abs(latent[0]) * 4);
+        const scale = Math.floor(Math.abs(latent[1]) * 20) + 5;
+        const colors = [
+            Math.floor(((latent[2] + 1) / 2) * 0xFFFFFF),
+            Math.floor(((latent[3] + 1) / 2) * 0xFFFFFF)
+        ];
+
+        for (let y = 0; y < 200; y += scale) {
+            for (let x = 0; x < 200; x += scale) {
+                let value;
+                switch (patternType) {
+                    case 0: value = Math.sin(x * 0.05) * Math.cos(y * 0.05); break;
+                    case 1: value = Math.sin((x + y) * 0.03); break;
+                    case 2: value = ((x ^ y) % 32) / 32; break;
+                    case 3: value = Math.sin(Math.sqrt(x * x + y * y) * 0.05); break;
+                    default: value = Math.sin(x * y * 0.001);
+                }
+                const colorIdx = value > 0 ? 0 : 1;
+                const c = colors[colorIdx];
+                ops.push(OPCODES.RECT);
+                ops.push(x & 0xFF, (x >> 8) & 0xFF, y & 0xFF, (y >> 8) & 0xFF, scale, scale);
+                ops.push(c & 0xFF, (c >> 8) & 0xFF, (c >> 16) & 0xFF);
+            }
+        }
+        return ops;
+    }
+
+    generateWaveProgram(latent) {
+        const ops = [];
+        ops.push(OPCODES.CLEAR, 0x00);
+
+        const numWaves = Math.floor(Math.abs(latent[0]) * 5) + 1;
+        for (let i = 0; i < numWaves; i++) {
+            const waveType = Math.floor(Math.abs(latent[i * 4 + 1]) * 4);
+            const freq = Math.floor(Math.abs(latent[i * 4 + 2]) * 20) + 1;
+            const amp = Math.floor(Math.abs(latent[i * 4 + 3]) * 80) + 20;
+            const phase = Math.floor(Math.abs(latent[i * 4 + 4]) * 360);
+            const color = Math.floor(((latent[i + 20] + 1) / 2) * 0xFFFFFF);
+
+            ops.push(OPCODES.WAVE);
+            ops.push(waveType, freq);
+            ops.push(amp & 0xFF, (amp >> 8) & 0xFF);
+            ops.push(phase & 0xFF, (phase >> 8) & 0xFF);
+            ops.push(color & 0xFF, (color >> 8) & 0xFF, (color >> 16) & 0xFF);
+        }
+        return ops;
+    }
+
+    generateFractal(latent) {
+        const ops = [];
+        ops.push(OPCODES.CLEAR, 0x00);
+        ops.push(0xF0); // Fractal marker
+        const cx = (latent[0] + 1) / 2;
+        const cy = (latent[1] + 1) / 2;
+        const maxIter = Math.floor(Math.abs(latent[2]) * 100) + 20;
+        ops.push(Math.floor(cx * 255), Math.floor(cy * 255), maxIter & 0xFF, (maxIter >> 8) & 0xFF);
+        return ops;
+    }
+
+    generateMiniGame(latent) {
+        const ops = [];
+        ops.push(OPCODES.CLEAR, 0x00);
+        ops.push(0xF1); // Game marker
+        const gameType = Math.floor(Math.abs(latent[0]) * 3);
+        const speed = Math.floor(Math.abs(latent[1]) * 10) + 1;
+        const color = Math.floor(((latent[2] + 1) / 2) * 0xFFFFFF);
+        ops.push(gameType, speed, color & 0xFF, (color >> 8) & 0xFF, (color >> 16) & 0xFF);
+        return ops;
+    }
+
+    generateDataViz(latent) { return this.generateWaveProgram(latent); }
+    generateAudioSynth(latent) { return this.generateWaveProgram(latent); }
+    generateTexture(latent) { return this.generatePattern(latent); }
+    generateParticleSystem(latent) { return this.generateVisualArt(latent); }
+    generateMatrixOp(latent) { return this.generatePattern(latent); }
+
+    computeFitness(bytecode, type) {
+        // Higher = better program (more complex, valid, diverse)
+        const len = bytecode.length;
+        const diversity = new Set(bytecode).size / Math.max(1, len);
+        const hasHalt = bytecode.includes(OPCODES.HALT);
+        return (len * 0.3 + diversity * 50 + (hasHalt ? 20 : 0)) / 100;
+    }
+
+    // Evolve programs - mutate existing ones
+    mutate(program, rate = 0.1) {
+        const mutated = new Uint8Array(program.bytecode);
+        for (let i = 4; i < mutated.length - 1; i++) {
+            if (Math.random() < rate) {
+                mutated[i] = Math.floor(Math.random() * 256);
+            }
+        }
+        // Mutate latent
+        const newLatent = new Float32Array(program.latent);
+        for (let i = 0; i < newLatent.length; i++) {
+            if (Math.random() < rate) {
+                newLatent[i] += (Math.random() - 0.5) * 0.5;
+            }
+        }
+        return {
+            ...program,
+            id: Date.now() + Math.random(),
+            bytecode: mutated,
+            latent: newLatent,
+            name: program.name + ' (mutated)',
+            fitness: this.computeFitness(mutated, program.typeId)
+        };
+    }
+
+    // Train the generator (update weights based on fitness)
+    trainStep() {
+        const program = this.generateProgram();
+        this.generatedPrograms.push(program);
+        this.lossHistory.gen.push(1 - program.fitness);
+        this.lossHistory.disc.push(program.fitness);
+
+        // Gradient-like update: reinforce high-fitness patterns
+        const lr = 0.001;
+        for (let i = 0; i < this.programWeights.typeWeights.length; i++) {
+            this.programWeights.typeWeights[i] += lr * program.latent[i % 128] * program.fitness;
+        }
+
+        this.pc++;
+        this.sp = (this.sp + 1) % 512;
+
+        return {
+            fitness: program.fitness,
+            type: program.type.name,
+            epoch: this.epoch,
+            bytecodeLen: program.bytecode.length
+        };
+    }
+}
+
+// ============================================
+// Bytecode VM Executor
+// ============================================
+class BytecodeVM {
+    constructor() {
+        this.stack = new Float32Array(1024);
+        this.sp = 0;
+        this.memory = new Float32Array(4096);
+        this.pc = 0;
+        this.halted = false;
+        this.output = []; // Visual commands
+        this.maxSteps = 100000;
+        this.steps = 0;
+    }
+
+    reset() {
+        this.stack.fill(0); this.sp = 0;
+        this.memory.fill(0);
+        this.pc = 0; this.halted = false;
+        this.output = []; this.steps = 0;
+    }
+
+    push(v) { if (this.sp < 1024) this.stack[this.sp++] = v; }
+    pop() { return this.sp > 0 ? this.stack[--this.sp] : 0; }
+    peek() { return this.sp > 0 ? this.stack[this.sp - 1] : 0; }
+
+    read16(code, pos) {
+        return (code[pos + 1] << 8) | code[pos];
+    }
+
+    read24(code, pos) {
+        return (code[pos + 2] << 16) | (code[pos + 1] << 8) | code[pos];
+    }
+
+    execute(bytecode) {
+        this.reset();
+
+        // Check magic
+        if (bytecode[0] !== 0xCA || bytecode[1] !== 0xFE) return { error: 'Invalid magic', output: [] };
+
+        const type = bytecode[2];
+        this.pc = 4; // Skip header
+
+        while (!this.halted && this.steps < this.maxSteps && this.pc < bytecode.length) {
+            const op = bytecode[this.pc++];
+            this.steps++;
+
+            switch (op) {
+                case OPCODES.NOP: break;
+                case OPCODES.PUSH: this.push(this.read16(bytecode, this.pc)); this.pc += 2; break;
+                case OPCODES.POP: this.pop(); break;
+                case OPCODES.ADD: this.push(this.pop() + this.pop()); break;
+                case OPCODES.SUB: { const b = this.pop(), a = this.pop(); this.push(a - b); break; }
+                case OPCODES.MUL: this.push(this.pop() * this.pop()); break;
+                case OPCODES.DIV: { const b = this.pop(); this.push(b !== 0 ? this.pop() / b : 0); break; }
+                case OPCODES.DUP: this.push(this.peek()); break;
+                case OPCODES.SWAP: { const a = this.pop(), b = this.pop(); this.push(a); this.push(b); break; }
+                case OPCODES.LOAD: this.push(this.memory[this.pop() % 4096]); break;
+                case OPCODES.STORE: { const addr = this.pop() % 4096; this.memory[addr] = this.pop(); break; }
+                case OPCODES.PIXEL: {
+                    const x = this.read16(bytecode, this.pc); this.pc += 2;
+                    const y = this.read16(bytecode, this.pc); this.pc += 2;
+                    const color = this.read24(bytecode, this.pc); this.pc += 3;
+                    this.output.push({ type: 'pixel', x, y, color });
+                    break;
+                }
+                case OPCODES.LINE: {
+                    const x1 = this.read16(bytecode, this.pc); this.pc += 2;
+                    const y1 = this.read16(bytecode, this.pc); this.pc += 2;
+                    const x2 = this.read16(bytecode, this.pc); this.pc += 2;
+                    const y2 = this.read16(bytecode, this.pc); this.pc += 2;
+                    const color = this.read24(bytecode, this.pc); this.pc += 3;
+                    this.output.push({ type: 'line', x1, y1, x2, y2, color });
+                    break;
+                }
+                case OPCODES.RECT: {
+                    const x = this.read16(bytecode, this.pc); this.pc += 2;
+                    const y = this.read16(bytecode, this.pc); this.pc += 2;
+                    const w = bytecode[this.pc++];
+                    const h = bytecode[this.pc++];
+                    const color = this.read24(bytecode, this.pc); this.pc += 3;
+                    this.output.push({ type: 'rect', x, y, w, h, color });
+                    break;
+                }
+                case OPCODES.CIRCLE: {
+                    const x = this.read16(bytecode, this.pc); this.pc += 2;
+                    const y = this.read16(bytecode, this.pc); this.pc += 2;
+                    const r = bytecode[this.pc++];
+                    const color = this.read24(bytecode, this.pc); this.pc += 3;
+                    this.output.push({ type: 'circle', x, y, r, color });
+                    break;
+                }
+                case OPCODES.WAVE: {
+                    const waveType = bytecode[this.pc++];
+                    const freq = bytecode[this.pc++];
+                    const amp = this.read16(bytecode, this.pc); this.pc += 2;
+                    const phase = this.read16(bytecode, this.pc); this.pc += 2;
+                    const color = this.read24(bytecode, this.pc); this.pc += 3;
+                    this.output.push({ type: 'wave', waveType, freq, amp, phase, color });
+                    break;
+                }
+                case OPCODES.CLEAR: {
+                    const color = bytecode[this.pc++];
+                    this.output.push({ type: 'clear', color });
+                    break;
+                }
+                case OPCODES.FILL: {
+                    const color = this.read24(bytecode, this.pc); this.pc += 3;
+                    this.output.push({ type: 'fill', color });
+                    break;
+                }
+                case OPCODES.JMP: this.pc = this.read16(bytecode, this.pc); break;
+                case OPCODES.JZ: { const addr = this.read16(bytecode, this.pc); this.pc += 2; if (this.pop() === 0) this.pc = addr; break; }
+                case OPCODES.JNZ: { const addr = this.read16(bytecode, this.pc); this.pc += 2; if (this.pop() !== 0) this.pc = addr; break; }
+                case 0xF0: { // Fractal marker
+                    const cx = bytecode[this.pc++] / 255;
+                    const cy = bytecode[this.pc++] / 255;
+                    const maxIter = this.read16(bytecode, this.pc); this.pc += 2;
+                    this.output.push({ type: 'fractal', cx, cy, maxIter });
+                    break;
+                }
+                case 0xF1: { // Game marker
+                    const gameType = bytecode[this.pc++];
+                    const speed = bytecode[this.pc++];
+                    const color = this.read24(bytecode, this.pc); this.pc += 3;
+                    this.output.push({ type: 'game', gameType, speed, color });
+                    break;
+                }
+                case OPCODES.HALT: this.halted = true; break;
+                default: break; // Skip unknown
+            }
+        }
+
+        return { output: this.output, steps: this.steps, halted: this.halted };
+    }
+}
+
+// ============================================
+// NEURAL VM APP
+// ============================================
+let vmApp = null;
+
+function openNeuralVM() {
+    createWindow({
+        title: 'Neural VM - Generative App Engine',
+        icon: '⚡',
+        width: 1200,
+        height: 750,
+        x: 80, y: 40,
+        onCreated: (body, winObj) => {
+            body.innerHTML = getNeuralVMHTML();
+            body.style.cssText = 'width:100%;height:100%;overflow:hidden';
+            initNeuralVMApp(body, winObj);
+        }
+    });
+}
+
+function getNeuralVMHTML() {
+    return `<div class="nvm-app">
+        <div class="nvm-toolbar">
+            <span class="dot idle" id="nvm-dot"></span>
+            <span id="nvm-status" style="font-size:12px;color:#8899aa">Idle</span>
+            <div style="flex:1"></div>
+            <span id="nvm-fps" style="font-size:11px;color:#8899aa">0 FPS</span>
+        </div>
+        <div class="nvm-content">
+            <div class="nvm-panel" style="width:280px;min-width:240px">
+                <div class="nvm-panel-header">Controls</div>
+                <div class="nvm-panel-body">
+                    <div class="nvm-controls">
+                        <button class="vm-btn vm-btn-primary" id="nvm-btn-generate" onclick="nvmGenerate()">🎲 Generate Program</button>
+                        <button class="vm-btn vm-btn-secondary" id="nvm-btn-run" onclick="nvmRunProgram()" disabled>▶ Execute Program</button>
+                        <button class="vm-btn vm-btn-secondary" id="nvm-btn-batch" onclick="nvmBatchGen()">⚡ Generate Batch (10)</button>
+                        <button class="vm-btn vm-btn-secondary" id="nvm-btn-train" onclick="nvmStartTrain()">🔄 Train Generator</button>
+                        <button class="vm-btn vm-btn-secondary" id="nvm-btn-mutate" onclick="nvmMutateBest()" disabled>🧬 Mutate Best</button>
+                        <button class="vm-btn vm-btn-danger" id="nvm-btn-stop" onclick="nvmStop()" disabled>⏹ Stop</button>
+                    </div>
+                    <div style="margin-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:6px">
+                        <div class="nvm-stat"><div class="nvm-stat-label">Epoch</div><div class="nvm-stat-value info" id="nvm-epoch">0</div></div>
+                        <div class="nvm-stat"><div class="nvm-stat-label">Programs</div><div class="nvm-stat-value" id="nvm-programs">0</div></div>
+                        <div class="nvm-stat"><div class="nvm-stat-label">Best Fitness</div><div class="nvm-stat-value warn" id="nvm-fitness">0.00</div></div>
+                        <div class="nvm-stat"><div class="nvm-stat-label">Steps/sec</div><div class="nvm-stat-value" id="nvm-speed">0</div></div>
+                    </div>
+                    <div style="margin-top:8px">
+                        <div style="font-size:10px;color:#8899aa">Training Progress</div>
+                        <div class="nvm-progress-bar"><div class="nvm-progress-fill" id="nvm-progress" style="width:0%"></div></div>
+                        <div style="font-size:10px;color:#8899aa;margin-top:2px;text-align:right" id="nvm-progress-text">0 / 500</div>
+                    </div>
+                    <div style="margin-top:8px">
+                        <div style="font-size:10px;color:#8899aa">VM Registers</div>
+                        <div class="nvm-reg"><span class="nvm-reg-label">PC</span><span class="nvm-reg-val" id="nvm-pc">0</span></div>
+                        <div class="nvm-reg"><span class="nvm-reg-label">SP</span><span class="nvm-reg-val" id="nvm-sp">0</span></div>
+                        <div class="nvm-reg"><span class="nvm-reg-label">STACK</span><span class="nvm-reg-val" id="nvm-stack">0/1024</span></div>
+                    </div>
+                </div>
+            </div>
+            <div class="nvm-panel" style="flex:1">
+                <div class="nvm-panel-header">Generated Program Output</div>
+                <div class="nvm-panel-body">
+                    <div class="nvm-chart"><canvas id="nvm-loss-chart" height="180"></canvas></div>
+                    <div class="gen-app-canvas-wrap" style="height:200px;margin-top:8px"><canvas id="nvm-output-canvas" width="300" height="300"></canvas></div>
+                    <div class="nvm-console" id="nvm-console"></div>
+                </div>
+            </div>
+            <div class="nvm-panel" style="width:260px;min-width:220px">
+                <div class="nvm-panel-header">Latest Program</div>
+                <div class="nvm-panel-body">
+                    <div style="font-size:14px;font-weight:600;margin-bottom:8px" id="nvm-program-name">No program generated</div>
+                    <div style="font-size:11px;color:#8899aa;margin-bottom:4px">Type: <span id="nvm-program-type" style="color:#00ff88">-</span></div>
+                    <div style="font-size:11px;color:#8899aa;margin-bottom:4px">Fitness: <span id="nvm-program-fitness" style="color:#ffaa00">0.00</span></div>
+                    <div style="font-size:11px;color:#8899aa;margin-bottom:8px">Bytecode: <span id="nvm-program-bytes" style="color:#00ccff">0 bytes</span></div>
+                    <div style="font-size:10px;color:#8899aa">Bytecode (hex)</div>
+                    <div class="gen-app-code" id="nvm-program-code" style="max-height:120px;font-size:9px">No program loaded</div>
+                    <button class="vm-btn vm-btn-secondary" id="nvm-btn-open" onclick="nvmOpenProgram()" disabled style="width:100%;margin-top:8px;font-size:11px">🪟 Open as App Window</button>
+                    <button class="vm-btn vm-btn-secondary" id="nvm-btn-gallery" onclick="openAppGallery()" style="width:100%;margin-top:6px;font-size:11px">📂 View All Programs</button>
+                </div>
+            </div>
+        </div>
+    </div>`;
+}
+
+function initNeuralVMApp(body, winObj) {
+    vmApp = {
+        body, window: winObj,
+        generator: new ProgramGenerator(),
+        executor: new BytecodeVM(),
+        currentProgram: null,
+        isRunning: false,
+        trainingType: null,
+        fps: 0, lastFpsTime: performance.now(), frameCount: 0
+    };
+    nvmLog('Neural VM Generative Engine initialized');
+    nvmLog('Click Generate Program to create apps');
+}
+
+function nvmLog(type, msg) {
+    if (!vmApp) return;
+    const c = vmApp.body.querySelector('#nvm-console');
+    if (!c) return;
+    const t = new Date().toLocaleTimeString();
+    const l = document.createElement('div');
+    l.className = 'nvm-console-line';
+    l.innerHTML = `<span class="time">[${t}]</span> <span class="${type}">${msg}</span>`;
+    c.appendChild(l);
+    c.scrollTop = c.scrollHeight;
+}
+
+function nvmGenerate() {
+    if (!vmApp) return;
+    const program = vmApp.generator.generateProgram();
+    vmApp.currentProgram = program;
+    vmApp.generator.generatedPrograms.push(program);
+
+    // Update UI
+    vmApp.body.querySelector('#nvm-program-name').textContent = program.name;
+    vmApp.body.querySelector('#nvm-program-type').textContent = program.type.name;
+    vmApp.body.querySelector('#nvm-program-fitness').textContent = program.fitness.toFixed(2);
+    vmApp.body.querySelector('#nvm-program-bytes').textContent = program.bytecode.length + ' bytes';
+
+    // Show bytecode
+    const hex = Array.from(program.bytecode.slice(0, 64)).map(b => b.toString(16).padStart(2, '0')).join(' ');
+    vmApp.body.querySelector('#nvm-program-code').textContent = hex + (program.bytecode.length > 64 ? '...' : '');
+
+    // Enable buttons
+    vmApp.body.querySelector('#nvm-btn-run').disabled = false;
+    vmApp.body.querySelector('#nvm-btn-mutate').disabled = false;
+    vmApp.body.querySelector('#nvm-btn-open').disabled = false;
+
+    nvmLog('success', `Generated: ${program.name} (fitness: ${program.fitness.toFixed(2)}, ${program.bytecode.length} bytes)`);
+
+    // Auto-execute
+    nvmRunProgram();
+    nvmUpdateUI();
+}
+
+function nvmRunProgram() {
+    if (!vmApp || !vmApp.currentProgram) return;
+    const result = vmApp.executor.execute(vmApp.currentProgram.bytecode);
+
+    if (result.error) {
+        nvmLog('error', `Execution error: ${result.error}`);
+        return;
+    }
+
+    // Render output to canvas
+    nvmRenderProgramOutput(result.output, vmApp.currentProgram);
+
+    // Update registers
+    vmApp.body.querySelector('#nvm-pc').textContent = vmApp.executor.pc;
+    vmApp.body.querySelector('#nvm-sp').textContent = vmApp.executor.sp;
+    vmApp.body.querySelector('#nvm-stack').textContent = vmApp.executor.sp + '/1024';
+
+    nvmLog('info', `Executed ${result.steps} steps, ${result.output.length} draw commands`);
+}
+
+function nvmRenderProgramOutput(output, program) {
+    const canvas = vmApp.body.querySelector('#nvm-output-canvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    canvas.width = 300; canvas.height = 300;
+
+    // Clear
+    ctx.fillStyle = '#0a0e17';
+    ctx.fillRect(0, 0, 300, 300);
+
+    for (const cmd of output) {
+        switch (cmd.type) {
+            case 'clear':
+                ctx.fillStyle = '#' + (cmd.color || 0).toString(16).padStart(6, '0');
+                ctx.fillRect(0, 0, 300, 300);
+                break;
+            case 'pixel':
+                ctx.fillStyle = '#' + cmd.color.toString(16).padStart(6, '0');
+                ctx.fillRect(cmd.x % 300, cmd.y % 300, 2, 2);
+                break;
+            case 'rect':
+                ctx.fillStyle = '#' + cmd.color.toString(16).padStart(6, '0');
+                ctx.fillRect(cmd.x % 300, cmd.y % 300, cmd.w, cmd.h);
+                break;
+            case 'circle':
+                ctx.fillStyle = '#' + cmd.color.toString(16).padStart(6, '0');
+                ctx.beginPath();
+                ctx.arc(cmd.x % 300, cmd.y % 300, cmd.r, 0, Math.PI * 2);
+                ctx.fill();
+                break;
+            case 'line':
+                ctx.strokeStyle = '#' + cmd.color.toString(16).padStart(6, '0');
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(cmd.x1 % 300, cmd.y1 % 300);
+                ctx.lineTo(cmd.x2 % 300, cmd.y2 % 300);
+                ctx.stroke();
+                break;
+            case 'wave':
+                ctx.strokeStyle = '#' + cmd.color.toString(16).padStart(6, '0');
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                for (let x = 0; x < 300; x++) {
+                    let y;
+                    const phaseRad = cmd.phase * Math.PI / 180;
+                    switch (cmd.waveType) {
+                        case 0: y = 150 + Math.sin(x * cmd.freq * 0.02 + phaseRad) * cmd.amp; break;
+                        case 1: y = 150 + Math.sin(x * cmd.freq * 0.03) * Math.cos(x * 0.01) * cmd.amp; break;
+                        case 2: y = 150 + (Math.abs(Math.sin(x * cmd.freq * 0.02 + phaseRad)) * 2 - 1) * cmd.amp; break;
+                        case 3: y = 150 + Math.sin(x * x * cmd.freq * 0.0001 + phaseRad) * cmd.amp; break;
+                        default: y = 150 + Math.sin(x * cmd.freq * 0.01) * cmd.amp;
+                    }
+                    if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+                }
+                ctx.stroke();
+                break;
+            case 'fractal':
+                nvmRenderFractal(ctx, cmd.cx, cmd.cy, cmd.maxIter);
+                break;
+            case 'game':
+                nvmRenderMiniGame(ctx, cmd.gameType, cmd.speed, cmd.color);
+                break;
+        }
+    }
+}
+
+function nvmRenderFractal(ctx, cx, cy, maxIter) {
+    const w = 300, h = 300;
+    const imgData = ctx.createImageData(w, h);
+    const zoom = 3.0;
+
+    for (let py = 0; py < h; py += 2) {
+        for (let px = 0; px < w; px += 2) {
+            const x0 = (px - w / 2) / (w / 2) * zoom + cx - 1.5;
+            const y0 = (py - h / 2) / (h / 2) * zoom + cy - 1.0;
+            let x = 0, y = 0, iter = 0;
+            while (x * x + y * y <= 4 && iter < maxIter) {
+                const tmp = x * x - y * y + x0;
+                y = 2 * x * y + y0;
+                x = tmp;
+                iter++;
+            }
+            const hue = iter / maxIter * 360;
+            const color = hslToRgb(hue / 360, 0.8, iter === maxIter ? 0 : 0.5);
+            const idx = (py * w + px) * 4;
+            for (let dy = 0; dy < 2 && py + dy < h; dy++) {
+                for (let dx = 0; dx < 2 && px + dx < w; dx++) {
+                    const i = ((py + dy) * w + (px + dx)) * 4;
+                    imgData.data[i] = color[0];
+                    imgData.data[i + 1] = color[1];
+                    imgData.data[i + 2] = color[2];
+                    imgData.data[i + 3] = 255;
+                }
+            }
+        }
+    }
+    ctx.putImageData(imgData, 0, 0);
+}
+
+function nvmRenderMiniGame(ctx, type, speed, color) {
+    // Simple game visualization
+    ctx.fillStyle = '#0a0e17';
+    ctx.fillRect(0, 0, 300, 300);
+
+    const time = Date.now() * 0.001 * speed;
+    for (let i = 0; i < 10; i++) {
+        const x = (Math.sin(time + i * 0.7) + 1) * 150;
+        const y = (Math.cos(time * 1.3 + i * 1.1) + 1) * 150;
+        ctx.fillStyle = '#' + color.toString(16).padStart(6, '0');
+        ctx.beginPath();
+        ctx.arc(x, y, 8 + Math.sin(time + i) * 4, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    ctx.fillStyle = '#fff';
+    ctx.font = '12px Consolas';
+    ctx.fillText(`Game Type ${type} | Speed ${speed}`, 10, 20);
+}
+
+function nvmBatchGen() {
+    if (!vmApp) return;
+    nvmLog('info', 'Generating batch of 10 programs...');
+    let bestFitness = 0;
+    for (let i = 0; i < 10; i++) {
+        const p = vmApp.generator.generateProgram();
+        vmApp.generator.generatedPrograms.push(p);
+        if (p.fitness > bestFitness) {
+            bestFitness = p.fitness;
+            vmApp.currentProgram = p;
+        }
+    }
+    nvmLog('success', `Generated 10 programs. Best fitness: ${bestFitness.toFixed(2)}`);
+    if (vmApp.currentProgram) {
+        vmApp.body.querySelector('#nvm-program-name').textContent = vmApp.currentProgram.name;
+        vmApp.body.querySelector('#nvm-program-type').textContent = vmApp.currentProgram.type.name;
+        vmApp.body.querySelector('#nvm-program-fitness').textContent = vmApp.currentProgram.fitness.toFixed(2);
+        vmApp.body.querySelector('#nvm-program-bytes').textContent = vmApp.currentProgram.bytecode.length + ' bytes';
+        vmApp.body.querySelector('#nvm-btn-run').disabled = false;
+        vmApp.body.querySelector('#nvm-btn-mutate').disabled = false;
+        vmApp.body.querySelector('#nvm-btn-open').disabled = false;
+        nvmRunProgram();
+    }
+    nvmUpdateUI();
+}
+
+function nvmStartTrain() {
+    if (!vmApp) return;
+    vmApp.isRunning = true;
+    vmApp.trainingType = 'train';
+    vmApp.body.querySelector('#nvm-btn-generate').disabled = true;
+    vmApp.body.querySelector('#nvm-btn-batch').disabled = true;
+    vmApp.body.querySelector('#nvm-btn-train').disabled = true;
+    vmApp.body.querySelector('#nvm-btn-stop').disabled = false;
+    vmApp.body.querySelector('#nvm-dot').className = 'dot running';
+    vmApp.body.querySelector('#nvm-status').textContent = 'Training Generator...';
+    nvmLog('info', 'Starting generator training (500 epochs)...');
+    vmApp.lastFpsTime = performance.now();
+    vmApp.frameCount = 0;
+    nvmTrainLoop();
+}
+
+function nvmTrainLoop() {
+    if (!vmApp || !vmApp.isRunning) return;
+    if (vmApp.generator.epoch >= 500) {
+        nvmTrainingComplete();
+        return;
+    }
+
+    for (let i = 0; i < 5; i++) {
+        if (vmApp.generator.epoch >= 500) break;
+        vmApp.generator.trainStep();
+    }
+
+    // Auto-generate and run a program every 25 epochs
+    if (vmApp.generator.epoch % 25 === 0) {
+        vmApp.currentProgram = vmApp.generator.generateProgram();
+        vmApp.generator.generatedPrograms.push(vmApp.currentProgram);
+        const result = vmApp.executor.execute(vmApp.currentProgram.bytecode);
+        nvmRenderProgramOutput(result.output, vmApp.currentProgram);
+
+        vmApp.body.querySelector('#nvm-program-name').textContent = vmApp.currentProgram.name;
+        vmApp.body.querySelector('#nvm-program-type').textContent = vmApp.currentProgram.type.name;
+        vmApp.body.querySelector('#nvm-btn-run').disabled = false;
+        vmApp.body.querySelector('#nvm-btn-mutate').disabled = false;
+        vmApp.body.querySelector('#nvm-btn-open').disabled = false;
+    }
+
+    nvmUpdateUI();
+    nvmDrawLossChart();
+
+    vmApp.frameCount++;
+    const now = performance.now();
+    if (now - vmApp.lastFpsTime >= 1000) {
+        vmApp.fps = vmApp.frameCount;
+        vmApp.body.querySelector('#nvm-fps').textContent = vmApp.fps + ' FPS';
+        document.getElementById('fps-display').textContent = vmApp.fps + ' FPS';
+        vmApp.frameCount = 0;
+        vmApp.lastFpsTime = now;
+    }
+
+    requestAnimationFrame(nvmTrainLoop);
+}
+
+function nvmTrainingComplete() {
+    vmApp.isRunning = false;
+    vmApp.body.querySelector('#nvm-btn-generate').disabled = false;
+    vmApp.body.querySelector('#nvm-btn-batch').disabled = false;
+    vmApp.body.querySelector('#nvm-btn-train').disabled = false;
+    vmApp.body.querySelector('#nvm-btn-stop').disabled = true;
+    vmApp.body.querySelector('#nvm-dot').className = 'dot complete';
+    vmApp.body.querySelector('#nvm-status').textContent = 'Training Complete';
+    vmApp.body.querySelector('#nvm-progress').style.width = '100%';
+    vmApp.body.querySelector('#nvm-progress-text').textContent = '500 / 500';
+    nvmLog('success', `Training complete: ${vmApp.generator.generatedPrograms.length} programs generated`);
+    nvmLog('success', 'Best programs available in App Gallery');
+}
+
+function nvmMutateBest() {
+    if (!vmApp || !vmApp.currentProgram) return;
+    const mutated = vmApp.generator.mutate(vmApp.currentProgram);
+    vmApp.currentProgram = mutated;
+    vmApp.generator.generatedPrograms.push(mutated);
+
+    vmApp.body.querySelector('#nvm-program-name').textContent = mutated.name;
+    vmApp.body.querySelector('#nvm-program-type').textContent = mutated.type.name;
+    vmApp.body.querySelector('#nvm-program-fitness').textContent = mutated.fitness.toFixed(2);
+    vmApp.body.querySelector('#nvm-program-bytes').textContent = mutated.bytecode.length + ' bytes';
+
+    const hex = Array.from(mutated.bytecode.slice(0, 64)).map(b => b.toString(16).padStart(2, '0')).join(' ');
+    vmApp.body.querySelector('#nvm-program-code').textContent = hex;
+
+    const result = vmApp.executor.execute(mutated.bytecode);
+    nvmRenderProgramOutput(result.output, mutated);
+    nvmLog('success', `Mutated: fitness ${mutated.fitness.toFixed(2)}`);
+}
+
+function nvmOpenProgram() {
+    if (!vmApp || !vmApp.currentProgram) return;
+    openGeneratedApp(vmApp.currentProgram);
+}
+
+function nvmStop() {
+    if (!vmApp) return;
+    vmApp.isRunning = false;
+    vmApp.body.querySelector('#nvm-btn-generate').disabled = false;
+    vmApp.body.querySelector('#nvm-btn-batch').disabled = false;
+    vmApp.body.querySelector('#nvm-btn-train').disabled = false;
+    vmApp.body.querySelector('#nvm-btn-stop').disabled = true;
+    vmApp.body.querySelector('#nvm-dot').className = 'dot idle';
+    vmApp.body.querySelector('#nvm-status').textContent = 'Stopped';
+    nvmLog('info', 'Stopped');
+}
+
+function nvmUpdateUI() {
+    if (!vmApp) return;
+    vmApp.body.querySelector('#nvm-epoch').textContent = vmApp.generator.epoch;
+    vmApp.body.querySelector('#nvm-programs').textContent = vmApp.generator.generatedPrograms.length;
+    const best = vmApp.generator.generatedPrograms.reduce((a, b) => a.fitness > b.fitness ? a : b, { fitness: 0 });
+    vmApp.body.querySelector('#nvm-fitness').textContent = best.fitness.toFixed(2);
+    vmApp.body.querySelector('#nvm-pc').textContent = vmApp.executor.pc;
+    vmApp.body.querySelector('#nvm-sp').textContent = vmApp.executor.sp;
+    vmApp.body.querySelector('#nvm-stack').textContent = vmApp.executor.sp + '/1024';
+
+    const progress = Math.min(100, (vmApp.generator.epoch / 500) * 100);
+    vmApp.body.querySelector('#nvm-progress').style.width = progress + '%';
+    vmApp.body.querySelector('#nvm-progress-text').textContent = `${vmApp.generator.epoch} / 500`;
+}
+
+function nvmDrawLossChart() {
+    if (!vmApp) return;
+    const canvas = vmApp.body.querySelector('#nvm-loss-chart');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    canvas.width = canvas.offsetWidth; canvas.height = canvas.offsetHeight;
+
+    ctx.fillStyle = '#0a0e17';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    const hist = vmApp.generator.lossHistory;
+    if (hist.gen.length < 2) return;
+
+    const n = Math.min(hist.gen.length, 200);
+    const gen = hist.gen.slice(-n);
+    const disc = hist.disc.slice(-n);
+    const all = [...gen, ...disc];
+    const yMin = Math.min(...all) * 1.1;
+    const yMax = Math.max(...all) * 1.1;
+    const yRange = yMax - yMin || 1;
+
+    ctx.strokeStyle = '#1e2d45'; ctx.lineWidth = 0.5;
+    for (let i = 0; i <= 4; i++) { const y = (canvas.height / 4) * i; ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke(); }
+
+    ctx.strokeStyle = '#00ff88'; ctx.lineWidth = 2; ctx.beginPath();
+    for (let i = 0; i < gen.length; i++) { const x = (i / (n - 1)) * canvas.width; const y = canvas.height - ((gen[i] - yMin) / yRange) * canvas.height; if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); }
+    ctx.stroke();
+
+    ctx.strokeStyle = '#00ccff'; ctx.lineWidth = 2; ctx.beginPath();
+    for (let i = 0; i < disc.length; i++) { const x = (i / (n - 1)) * canvas.width; const y = canvas.height - ((disc[i] - yMin) / yRange) * canvas.height; if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); }
+    ctx.stroke();
+
+    ctx.fillStyle = '#00ff88'; ctx.font = '10px Consolas'; ctx.fillText('Gen Loss', 10, 14);
+    ctx.fillStyle = '#00ccff'; ctx.fillText('Fitness', 80, 14);
+    ctx.fillStyle = '#8899aa'; ctx.fillText(`Programs: ${vmApp.generator.generatedPrograms.length}`, canvas.width - 100, 14);
+}
+
+// ============================================
+// APP GALLERY
+// ============================================
+function openAppGallery() {
+    createWindow({
+        title: 'App Gallery - Generated Programs',
+        icon: '🎮',
+        width: 900,
+        height: 600,
+        x: 100, y: 60,
+        onCreated: (body) => {
+            body.innerHTML = `
+                <div style="padding:15px">
+                    <div style="font-size:16px;font-weight:700;margin-bottom:15px;background:linear-gradient(90deg,#00ff88,#00ccff);-webkit-background-clip:text;-webkit-text-fill-color:transparent">Generated App Gallery</div>
+                    <div style="font-size:12px;color:#8899aa;margin-bottom:15px">Programs generated by the Neural VM. Click to run any app.</div>
+                    <div class="app-gallery" id="app-gallery-grid"></div>
+                </div>`;
+            renderAppGallery(body.querySelector('#app-gallery-grid'));
+        }
+    });
+}
+
+function renderAppGallery(container) {
+    if (!vmApp || vmApp.generator.generatedPrograms.length === 0) {
+        container.innerHTML = '<div style="text-align:center;padding:40px;color:#8899aa">No programs generated yet. Open Neural VM and click "Generate Program" or "Train Generator" first.</div>';
+        return;
+    }
+
+    container.innerHTML = '';
+    // Show newest first, limit to 50
+    const programs = [...vmApp.generator.generatedPrograms].reverse().slice(0, 50);
+
+    for (const program of programs) {
+        const card = document.createElement('div');
+        card.className = 'app-card';
+        card.onclick = () => openGeneratedApp(program);
+
+        const preview = document.createElement('canvas');
+        preview.width = 140;
+        preview.height = 100;
+        renderPreview(preview, program);
+
+        const info = document.createElement('div');
+        info.className = 'app-card-info';
+        info.innerHTML = `
+            <div class="app-card-name">${program.name}</div>
+            <div class="app-card-type">${program.type.icon} ${program.type.name}</div>
+            <div class="app-card-stats">Fitness: ${program.fitness.toFixed(2)} | ${program.bytecode.length} bytes</div>
+        `;
+
+        card.appendChild(preview);
+        card.appendChild(info);
+        container.appendChild(card);
+    }
+}
+
+function renderPreview(canvas, program) {
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#0a0e17';
+    ctx.fillRect(0, 0, 140, 100);
+
+    // Generate a quick preview by executing a subset
+    const result = new BytecodeVM().execute(program.bytecode);
+
+    for (const cmd of result.output.slice(0, 50)) {
+        switch (cmd.type) {
+            case 'rect':
+                ctx.fillStyle = '#' + cmd.color.toString(16).padStart(6, '0');
+                ctx.fillRect(cmd.x % 140, cmd.y % 100, Math.min(cmd.w, 20), Math.min(cmd.h, 10));
+                break;
+            case 'circle':
+                ctx.fillStyle = '#' + cmd.color.toString(16).padStart(6, '0');
+                ctx.beginPath();
+                ctx.arc(cmd.x % 140, cmd.y % 100, Math.min(cmd.r, 15), 0, Math.PI * 2);
+                ctx.fill();
+                break;
+            case 'wave':
+                ctx.strokeStyle = '#' + cmd.color.toString(16).padStart(6, '0');
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                for (let x = 0; x < 140; x++) {
+                    const phaseRad = cmd.phase * Math.PI / 180;
+                    const y = 50 + Math.sin(x * cmd.freq * 0.05 + phaseRad) * cmd.amp * 0.3;
+                    if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+                }
+                ctx.stroke();
+                break;
+        }
+    }
+}
+
+function openGeneratedApp(program) {
+    createWindow({
+        title: program.name,
+        icon: program.type.icon,
+        width: 500,
+        height: 500,
+        x: 150 + Math.random() * 200,
+        y: 80 + Math.random() * 150,
+        data: { program },
+        onCreated: (body) => {
+            body.innerHTML = `
+                <div class="gen-app-container">
+                    <div class="gen-app-header">
+                        <span style="font-size:18px">${program.type.icon}</span>
+                        <span style="font-weight:600;color:#e0e0e0">${program.name}</span>
+                        <span style="font-size:11px;color:#8899aa;margin-left:auto">Fitness: ${program.fitness.toFixed(2)} | ${program.bytecode.length} bytes</span>
+                    </div>
+                    <div class="gen-app-code" id="gen-code-${program.id.toString().slice(-6)}"></div>
+                    <div class="gen-app-canvas-wrap"><canvas id="gen-canvas-${program.id.toString().slice(-6)}" width="400" height="350"></canvas></div>
+                </div>`;
+
+            // Show bytecode
+            const hex = Array.from(program.bytecode.slice(0, 128)).map(b => b.toString(16).padStart(2, '0')).join(' ');
+            body.querySelector('.gen-app-code').textContent = hex + (program.bytecode.length > 128 ? ` ... (${program.bytecode.length} bytes total)` : '');
+
+            // Execute and render
+            const result = new BytecodeVM().execute(program.bytecode);
+            const canvas = body.querySelector('canvas');
+            renderFullOutput(canvas, result.output, program);
+        }
+    });
+}
+
+function renderFullOutput(canvas, output, program) {
+    const ctx = canvas.getContext('2d');
+    canvas.width = 400; canvas.height = 350;
+
+    ctx.fillStyle = '#0a0e17';
+    ctx.fillRect(0, 0, 400, 350);
+
+    for (const cmd of output) {
+        switch (cmd.type) {
+            case 'clear':
+                ctx.fillStyle = '#' + (cmd.color || 0).toString(16).padStart(6, '0');
+                ctx.fillRect(0, 0, 400, 350);
+                break;
+            case 'pixel':
+                ctx.fillStyle = '#' + cmd.color.toString(16).padStart(6, '0');
+                ctx.fillRect(cmd.x % 400, cmd.y % 350, 3, 3);
+                break;
+            case 'rect':
+                ctx.fillStyle = '#' + cmd.color.toString(16).padStart(6, '0');
+                ctx.fillRect(cmd.x % 400, cmd.y % 350, cmd.w, cmd.h);
+                break;
+            case 'circle':
+                ctx.fillStyle = '#' + cmd.color.toString(16).padStart(6, '0');
+                ctx.beginPath();
+                ctx.arc(cmd.x % 400, cmd.y % 350, cmd.r, 0, Math.PI * 2);
+                ctx.fill();
+                break;
+            case 'line':
+                ctx.strokeStyle = '#' + cmd.color.toString(16).padStart(6, '0');
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(cmd.x1 % 400, cmd.y1 % 350);
+                ctx.lineTo(cmd.x2 % 400, cmd.y2 % 350);
+                ctx.stroke();
+                break;
+            case 'wave':
+                ctx.strokeStyle = '#' + cmd.color.toString(16).padStart(6, '0');
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                for (let x = 0; x < 400; x++) {
+                    const phaseRad = cmd.phase * Math.PI / 180;
+                    let y;
+                    switch (cmd.waveType) {
+                        case 0: y = 175 + Math.sin(x * cmd.freq * 0.02 + phaseRad) * cmd.amp; break;
+                        case 1: y = 175 + Math.sin(x * cmd.freq * 0.03) * Math.cos(x * 0.01) * cmd.amp; break;
+                        case 2: y = 175 + (Math.abs(Math.sin(x * cmd.freq * 0.02 + phaseRad)) * 2 - 1) * cmd.amp; break;
+                        case 3: y = 175 + Math.sin(x * x * cmd.freq * 0.0001 + phaseRad) * cmd.amp; break;
+                        default: y = 175 + Math.sin(x * cmd.freq * 0.01) * cmd.amp;
+                    }
+                    if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+                }
+                ctx.stroke();
+                break;
+            case 'fractal':
+                renderFractalFull(ctx, cmd.cx, cmd.cy, cmd.maxIter, 400, 350);
+                break;
+        }
+    }
+}
+
+function renderFractalFull(ctx, cx, cy, maxIter, w, h) {
+    const imgData = ctx.createImageData(w, h);
+    const zoom = 3.0;
+    for (let py = 0; py < h; py += 2) {
+        for (let px = 0; px < w; px += 2) {
+            const x0 = (px - w / 2) / (w / 2) * zoom + cx - 1.5;
+            const y0 = (py - h / 2) / (h / 2) * zoom + cy - 1.0;
+            let x = 0, y = 0, iter = 0;
+            while (x * x + y * y <= 4 && iter < maxIter) {
+                const tmp = x * x - y * y + x0;
+                y = 2 * x * y + y0;
+                x = tmp;
+                iter++;
+            }
+            const hue = iter / maxIter * 360;
+            const color = hslToRgb(hue / 360, 0.8, iter === maxIter ? 0 : 0.5);
+            for (let dy = 0; dy < 2 && py + dy < h; dy++) {
+                for (let dx = 0; dx < 2 && px + dx < w; dx++) {
+                    const i = ((py + dy) * w + (px + dx)) * 4;
+                    imgData.data[i] = color[0];
+                    imgData.data[i + 1] = color[1];
+                    imgData.data[i + 2] = color[2];
+                    imgData.data[i + 3] = 255;
+                }
+            }
+        }
+    }
+    ctx.putImageData(imgData, 0, 0);
+}
+
+// ============================================
+// UTILITY APPS
+// ============================================
+function openTerminal() {
+    createWindow({ title: 'Terminal', icon: '💻', width: 700, height: 450, x: 200, y: 150,
+        onCreated: (body) => {
+            body.innerHTML = `<div style="background:#0a0e17;width:100%;height:100%;padding:15px;font-family:'Consolas',monospace;font-size:13px;color:#00ff88;overflow-y:auto" id="term-content"><div>Neural VM WebOS Terminal v1.0</div><div>Generative App Engine</div><div>Type 'help' for commands</div><div style="color:#8899aa;margin-top:10px">──────────────</div></div><div style="background:#0a0e17;display:flex;padding:0 15px 10px;gap:8px"><span style="color:#00ff88;font-family:'Consolas',monospace;font-size:13px;line-height:32px">$</span><input type="text" id="term-input" style="flex:1;background:transparent;border:none;color:#e0e0e0;font-family:'Consolas',monospace;font-size:13px;outline:none" onkeydown="if(event.key==='Enter')termExec()"></div>`;
+            body.querySelector('#term-input').focus();
+        }
+    });
+}
+
+function termExec() {
+    const input = document.querySelector('#term-input');
+    if (!input) return;
+    const cmd = input.value.trim();
+    input.value = '';
+    const content = document.getElementById('term-content');
+    content.innerHTML += `<div><span style="color:#00ff88">$</span> ${cmd}</div>`;
+
+    const progs = vmApp ? vmApp.generator.generatedPrograms.length : 0;
+    const cmds = {
+        'help': 'Commands: help, ls, programs, generate, status, date, clear, echo',
+        'ls': 'SKELETON_NEURAL_F16_GAN_VM_F16.gguf  NEURAL_VM_WEBOS.html',
+        'programs': `${progs} programs generated`,
+        'generate': vmApp ? (nvmGenerate(), 'Program generated!') : 'Open Neural VM first',
+        'status': vmApp ? `Epoch: ${vmApp.generator.epoch} | Programs: ${progs} | Running: ${vmApp.isRunning}` : 'Neural VM not open',
+        'date': new Date().toString(),
+        'clear': (() => { content.innerHTML = ''; return ''; })()
+    };
+
+    if (cmd.startsWith('echo ')) content.innerHTML += `<div style="color:#e0e0e0">${cmd.slice(5)}</div>`;
+    else if (cmds[cmd]) { const r = typeof cmds[cmd] === 'function' ? cmds[cmd]() : cmds[cmd]; if (r) content.innerHTML += `<div style="color:#8899aa">${r}</div>`; }
+    else if (cmd) content.innerHTML += `<div style="color:#ff4444">Unknown: ${cmd}</div>`;
+    content.innerHTML += '<div style="color:#8899aa">──────────────</div>';
+    content.scrollTop = content.scrollHeight;
+}
+
+function openSystemInfo() {
+    createWindow({ title: 'System Info', icon: 'ℹ️', width: 500, height: 450, x: 250, y: 120,
+        onCreated: (body) => {
+            const rows = [
+                ['OS', 'Neural VM WebOS v1.0'],
+                ['Engine', 'Generative App Engine'],
+                ['ISA', '21 opcodes (draw, wave, fractal, game)'],
+                ['Program Types', '10 (Art, Pattern, Wave, Fractal, Game, etc)'],
+                ['VM Stack', '1024 elements'],
+                ['VM Memory', '4096 bytes'],
+                ['Latent Space', '128 dimensions'],
+                ['Platform', navigator.platform],
+                ['User Agent', navigator.userAgent.slice(0, 60) + '...']
+            ];
+            body.innerHTML = `<div style="padding:20px"><div style="font-size:16px;font-weight:700;margin-bottom:20px;background:linear-gradient(90deg,#00ff88,#00ccff);-webkit-background-clip:text;-webkit-text-fill-color:transparent">Neural VM WebOS</div>${rows.map(([k, v]) => `<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #1e2d45;font-size:12px"><span style="color:#8899aa">${k}</span><span style="color:#e0e0e0;font-family:'Consolas',monospace">${v}</span></div>`).join('')}</div>`;
+        }
+    });
+}
+
+// ============================================
+// UTILITIES
+// ============================================
+function hslToRgb(h, s, l) {
+    let r, g, b;
+    if (s === 0) { r = g = b = l; }
+    else {
+        const hue2rgb = (p, q, t) => { if (t < 0) t += 1; if (t > 1) t -= 1; if (t < 1/6) return p + (q - p) * 6 * t; if (t < 1/2) return q; if (t < 2/3) return p + (q - p) * (2/3 - t) * 6; return p; };
+        const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+        const p = 2 * l - q;
+        r = hue2rgb(p, q, h + 1/3);
+        g = hue2rgb(p, q, h);
+        b = hue2rgb(p, q, h - 1/3);
+    }
+    return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+}
+
+document.getElementById('desktop').addEventListener('contextmenu', e => {
+    if (e.target.closest('.window') || e.target.closest('#taskbar')) return;
+    e.preventDefault();
+    document.querySelector('.context-menu')?.remove();
+    const menu = document.createElement('div');
+    menu.className = 'context-menu';
+    menu.style.left = e.clientX + 'px';
+    menu.style.top = e.clientY + 'px';
+    menu.innerHTML = `
+        <div class="context-menu-item" onclick="openNeuralVM();this.parentElement.remove()">⚡ Open Neural VM</div>
+        <div class="context-menu-item" onclick="openAppGallery();this.parentElement.remove()">🎮 App Gallery</div>
+        <div class="context-menu-separator"></div>
+        <div class="context-menu-item" onclick="openTerminal();this.parentElement.remove()">💻 Terminal</div>
+        <div class="context-menu-item" onclick="openSystemInfo();this.parentElement.remove()">ℹ️ System Info</div>
+        <div class="context-menu-separator"></div>
+        <div class="context-menu-item" onclick="location.reload()">🔄 Refresh</div>`;
+    document.body.appendChild(menu);
+    setTimeout(() => document.addEventListener('click', () => menu.remove(), { once: true }), 0);
+});
+
+console.log('%c⚡ Neural VM WebOS - Generative App Engine', 'color:#00ff88;font-size:14px;font-weight:bold');
+</script>
+</body>
+</html>

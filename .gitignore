@@ -1,0 +1,6 @@
+*.pyc
+__pycache__/
+*.gguf
+bootstrap_checkpoints/
+*.log
+.env
